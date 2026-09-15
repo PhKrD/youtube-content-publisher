@@ -96,36 +96,65 @@ Two things to know:
   an admin has to reconnect weekly. If that becomes annoying, either switch to
   **Internal** (Workspace only) or submit for verification.
 
-## Step 5. Create the OAuth client
+## Step 5. Create the two OAuth clients
+
+You need **two** OAuth clients, not one:
+
+| Client | Used for | Permissions it ever asks for |
+| --- | --- | --- |
+| **Sign-in** | Every user signing into the app | `openid email profile` |
+| **Publishing** | One admin connecting the channel | YouTube + Drive |
+
+Keeping them separate means an ordinary sign-in never shows a scary
+"this app wants to manage your YouTube account" screen, and a leak of the
+sign-in secret grants no access to your channel or your files.
+
+### 5a. The sign-in client
 
 1. Go to <https://console.cloud.google.com/apis/credentials>
 2. Click **+ CREATE CREDENTIALS** → **OAuth client ID**.
 3. **Application type**: **Web application**.
-4. **Name**: `YouTube Content Publisher Web`
-5. Under **Authorised JavaScript origins**, click **+ ADD URI**:
-   ```
-   http://localhost:3000
-   ```
-6. Under **Authorised redirect URIs**, add **both** of these, exactly:
+4. **Name**: `YouTube Content Publisher — Sign-in`
+5. Under **Authorised redirect URIs**, add exactly:
    ```
    http://localhost:3000/api/auth/callback/google
+   ```
+6. Click **CREATE**. Copy the **Client ID** and **Client Secret** — these
+   become `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+### 5b. The publishing client
+
+1. **+ CREATE CREDENTIALS** → **OAuth client ID** again.
+2. **Application type**: **Web application**.
+3. **Name**: `YouTube Content Publisher — Publishing`
+4. Under **Authorised redirect URIs**, add exactly:
+   ```
    http://localhost:3000/api/integrations/google/callback
    ```
+5. Click **CREATE**. Copy the **Client ID** and **Client Secret** — these
+   become `GOOGLE_PUBLISHING_CLIENT_ID` / `GOOGLE_PUBLISHING_CLIENT_SECRET`.
 
-   > Both are required and they are different. The first signs users in. The
-   > second connects the publishing account. A missing second URI produces
-   > `redirect_uri_mismatch` when an admin clicks "Connect Google".
+🔒 **Both client secrets are secrets.** Do not paste them into a chat, a
+screenshot, or a file that gets committed. If you lose one you can create a
+new one; if you leak it, delete the client and make another.
 
-7. Click **CREATE**.
-8. A dialog shows **Your Client ID** and **Your Client Secret**.
-   Copy both now — you need them in Part 2.
-
-   🔒 **The client secret is a secret.** Do not paste it into a chat, a
-   screenshot, or a file that gets committed. If you lose it you can create a
-   new one; if you leak it, delete the client and make another.
+> **Why the publishing account is connected in two steps**
+>
+> Google refuses any single authorisation request that mixes Drive scopes with
+> YouTube scopes:
+>
+> ```
+> Error 400: invalid_request
+> This request contains scopes that cannot be requested together
+> ```
+>
+> So the admin approves **YouTube first, then Drive** — two consent screens,
+> same Google account. The app stores the two grants separately and uses the
+> right one for each API call. This is a Google restriction, not a choice; do
+> not try to merge the two flows back together.
 
 When you deploy to a real domain later, come back and add the production URLs
-here too. See [DEPLOYMENT.md](./DEPLOYMENT.md).
+to **both** clients. See [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ---
 
@@ -173,12 +202,23 @@ TOKEN_ENCRYPTION_KEY="<second value>"
 
 ## Step 9. Add your Google credentials
 
-Still in `.env`, paste the two values from Step 5:
+Still in `.env`, paste all four values from Step 5 — the sign-in pair from 5a
+and the publishing pair from 5b:
 
 ```ini
-GOOGLE_CLIENT_ID="123456789-abcdefg.apps.googleusercontent.com"
+# from Step 5a — the sign-in client
+GOOGLE_CLIENT_ID="123456789-aaaaaaa.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="GOCSPX-xxxxxxxxxxxxxxxx"
+
+# from Step 5b — the publishing client
+GOOGLE_PUBLISHING_CLIENT_ID="123456789-bbbbbbb.apps.googleusercontent.com"
+GOOGLE_PUBLISHING_CLIENT_SECRET="GOCSPX-yyyyyyyyyyyyyyyy"
 ```
+
+Getting these two pairs the wrong way round is the most common mistake here.
+The symptom is `Error 400: invalid_request` — "scopes that cannot be requested
+together" — on what should be a plain sign-in, because the sign-in flow is
+using the publishing client.
 
 ## Step 10. Set up the database
 

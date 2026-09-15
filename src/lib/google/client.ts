@@ -4,7 +4,12 @@ import { env, integrationCallbackUrl, isGoogleOAuthConfigured } from "../env";
 import { decryptSecret, encryptOptional, encryptSecret } from "../crypto";
 import { Errors, mapGoogleError } from "../errors";
 import { logger } from "../logger";
-import { analyseScopes } from "./scopes";
+import {
+  analyseServiceScopes,
+  GOOGLE_SERVICES,
+  SERVICE_LABELS,
+  type GoogleService,
+} from "./scopes";
 import { IntegrationStatus, type IntegrationAccount } from "@/generated/prisma";
 
 /**
@@ -22,6 +27,19 @@ import { IntegrationStatus, type IntegrationAccount } from "@/generated/prisma";
 
 /** Refresh this long before actual expiry, so a long operation cannot age out mid-flight. */
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * `provider` values used to file the two halves of the publishing integration
+ * (Google forbids requesting Drive and YouTube scopes in one flow — see
+ * ./scopes.ts). `"google"` is the pre-split value and is still honoured on
+ * read, so an organisation connected before this change keeps working until it
+ * next reconnects.
+ */
+const PROVIDERS: Record<GoogleService, string> = {
+  youtube: "google_youtube",
+  drive: "google_drive",
+};
+const LEGACY_PROVIDER = "google";
 
 export function assertGoogleConfigured(): void {
   if (!isGoogleOAuthConfigured()) {
@@ -51,6 +69,8 @@ export function createOAuthClient(redirectUri = integrationCallbackUrl()): OAuth
 
 export interface StoreTokensInput {
   organizationId: string;
+  /** Which half of the integration this grant is for. */
+  service: GoogleService;
   googleUserId: string;
   email: string;
   displayName?: string | null;
@@ -73,11 +93,13 @@ export interface StoreTokensInput {
  * So a missing refresh token preserves the existing one.
  */
 export async function storeIntegrationTokens(input: StoreTokensInput): Promise<IntegrationAccount> {
+  const provider = PROVIDERS[input.service];
+
   const existing = await db.integrationAccount.findUnique({
     where: {
       organizationId_provider_googleUserId: {
         organizationId: input.organizationId,
-        provider: "google",
+        provider,
         googleUserId: input.googleUserId,
       },
     },
@@ -117,13 +139,13 @@ export async function storeIntegrationTokens(input: StoreTokensInput): Promise<I
     where: {
       organizationId_provider_googleUserId: {
         organizationId: input.organizationId,
-        provider: "google",
+        provider,
         googleUserId: input.googleUserId,
       },
     },
     create: {
       organizationId: input.organizationId,
-      provider: "google",
+      provider,
       googleUserId: input.googleUserId,
       ...data,
     },
@@ -131,12 +153,68 @@ export async function storeIntegrationTokens(input: StoreTokensInput): Promise<I
   });
 }
 
-/** The organization's active publishing integration, if any. */
-export async function getIntegration(organizationId: string): Promise<IntegrationAccount | null> {
-  return db.integrationAccount.findFirst({
-    where: { organizationId, provider: "google" },
+/**
+ * The grant for one service. Falls back to a pre-split `"google"` row when it
+ * carries the scopes this service needs, so existing connections survive the
+ * upgrade without a forced reconnect.
+ */
+export async function getServiceIntegration(
+  organizationId: string,
+  service: GoogleService,
+): Promise<IntegrationAccount | null> {
+  const own = await db.integrationAccount.findFirst({
+    where: { organizationId, provider: PROVIDERS[service] },
     orderBy: { connectedAt: "desc" },
   });
+  if (own) return own;
+
+  const legacy = await db.integrationAccount.findFirst({
+    where: { organizationId, provider: LEGACY_PROVIDER },
+    orderBy: { connectedAt: "desc" },
+  });
+  if (legacy && analyseServiceScopes(service, legacy.scopes).ok) return legacy;
+
+  return null;
+}
+
+/** Both halves of the publishing integration. Either may be null. */
+export async function getIntegrations(
+  organizationId: string,
+): Promise<Record<GoogleService, IntegrationAccount | null>> {
+  const [youtube, drive] = await Promise.all([
+    getServiceIntegration(organizationId, "youtube"),
+    getServiceIntegration(organizationId, "drive"),
+  ]);
+  return { youtube, drive };
+}
+
+/**
+ * A single view of the publishing integration for pages that ask the simple
+ * question "is this organisation ready to publish?".
+ *
+ * Returns the YouTube grant (or the Drive one if only that exists) with
+ * `scopes` replaced by the UNION of both grants' scopes. `analyseScopes` on
+ * that union therefore reports "ok" only once both halves are connected, and
+ * `capabilities` correctly reflects which operations actually work — which is
+ * what every caller of this function wants to know.
+ */
+export async function getIntegration(organizationId: string): Promise<IntegrationAccount | null> {
+  const { youtube, drive } = await getIntegrations(organizationId);
+  const primary = youtube ?? drive;
+  if (!primary) return null;
+
+  if (youtube && drive && youtube.id !== drive.id) {
+    const merged = [...new Set([...youtube.scopes.split(/\s+/), ...drive.scopes.split(/\s+/)])]
+      .filter(Boolean)
+      .join(" ");
+    // Surface the unhealthier of the two statuses: if either half needs
+    // re-consent, the integration as a whole does.
+    const status =
+      youtube.status === IntegrationStatus.CONNECTED ? drive.status : youtube.status;
+    return { ...primary, scopes: merged, status };
+  }
+
+  return primary;
 }
 
 async function markNeedsReconsent(id: string, detail: string): Promise<void> {
@@ -168,19 +246,29 @@ export interface AuthorizedGoogle {
  * Throws a terminal AppError when an administrator must reconnect — callers
  * should surface that rather than retry.
  */
-export async function getAuthorizedClient(organizationId: string): Promise<AuthorizedGoogle> {
-  assertGoogleConfigured();
+export async function getAuthorizedClient(
+  organizationId: string,
+  service: GoogleService,
+): Promise<AuthorizedGoogle> {
+  assertGooglePublishingConfigured();
 
-  const integration = await getIntegration(organizationId);
+  const integration = await getServiceIntegration(organizationId, service);
   if (!integration) throw Errors.googleNotConnected();
 
   if (integration.status === IntegrationStatus.REVOKED) {
-    throw Errors.googleReauthRequired("integration previously marked REVOKED");
+    throw Errors.googleReauthRequired(
+      `${SERVICE_LABELS[service]} integration previously marked REVOKED`,
+    );
   }
 
-  const scopeReport = analyseScopes(integration.scopes);
+  // Only this service's own scopes matter. Checking the full publishing set
+  // here would make every Drive call fail whenever the YouTube half happened
+  // to be missing, and vice versa.
+  const scopeReport = analyseServiceScopes(service, integration.scopes);
   if (!scopeReport.ok) {
-    throw Errors.insufficientScope(`missing scopes: ${scopeReport.missing.join(", ")}`);
+    throw Errors.insufficientScope(
+      `${SERVICE_LABELS[service]} grant is missing scopes: ${scopeReport.missing.join(", ")}`,
+    );
   }
 
   const client = createOAuthClient();
@@ -297,29 +385,63 @@ export async function disconnectIntegration(integrationId: string): Promise<void
 }
 
 /**
+ * Disconnects every grant for the organisation. "Disconnect Google" in the UI
+ * must remove both halves — leaving one behind would present a half-connected
+ * integration that can neither publish nor be cleanly reconnected.
+ */
+export async function disconnectAllIntegrations(organizationId: string): Promise<number> {
+  const rows = await db.integrationAccount.findMany({
+    where: {
+      organizationId,
+      provider: { in: [...Object.values(PROVIDERS), LEGACY_PROVIDER] },
+    },
+    select: { id: true },
+  });
+  for (const row of rows) await disconnectIntegration(row.id);
+  return rows.length;
+}
+
+/**
  * Cheap liveness probe for the health page. Does not consume YouTube quota —
  * it only exercises the token endpoint.
  */
 export async function checkIntegrationHealth(
   organizationId: string,
 ): Promise<{ ok: boolean; status: IntegrationStatus | "NOT_CONNECTED"; message: string }> {
-  const integration = await getIntegration(organizationId);
-  if (!integration) {
+  const integrations = await getIntegrations(organizationId);
+
+  const missing = GOOGLE_SERVICES.filter((s) => !integrations[s]);
+  if (missing.length === GOOGLE_SERVICES.length) {
     return { ok: false, status: "NOT_CONNECTED", message: "No Google account connected." };
   }
-  try {
-    await getAuthorizedClient(organizationId);
-    await db.integrationAccount.update({
-      where: { id: integration.id },
-      data: { lastCheckedAt: new Date() },
-    });
-    return { ok: true, status: IntegrationStatus.CONNECTED, message: "Connected." };
-  } catch (e) {
-    const mapped = mapGoogleError(e, "oauth");
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      status: "NOT_CONNECTED",
+      message: `${missing.map((s) => SERVICE_LABELS[s]).join(" and ")} not connected yet.`,
+    };
+  }
+
+  const failures: string[] = [];
+  for (const service of GOOGLE_SERVICES) {
+    try {
+      await getAuthorizedClient(organizationId, service);
+      await db.integrationAccount.update({
+        where: { id: integrations[service]!.id },
+        data: { lastCheckedAt: new Date() },
+      });
+    } catch (e) {
+      failures.push(`${SERVICE_LABELS[service]}: ${mapGoogleError(e, "oauth").userMessage}`);
+    }
+  }
+
+  if (failures.length > 0) {
     return {
       ok: false,
       status: IntegrationStatus.NEEDS_RECONSENT,
-      message: mapped.userMessage,
+      message: failures.join(" "),
     };
   }
+
+  return { ok: true, status: IntegrationStatus.CONNECTED, message: "Connected." };
 }

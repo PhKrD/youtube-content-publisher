@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
-import { disconnectIntegration, getIntegration } from "@/lib/google/client";
+import { disconnectAllIntegrations, getIntegration, getIntegrations } from "@/lib/google/client";
 import { analyseScopes, describeScope } from "@/lib/google/scopes";
 
 export const runtime = "nodejs";
@@ -13,10 +13,13 @@ export const dynamic = "force-dynamic";
 /** Current integration status for the settings page. Never returns tokens. */
 export const GET = route(async () => {
   const principal = await requireAdmin();
-  const integration = await getIntegration(principal.organizationId);
+  const [integration, perService] = await Promise.all([
+    getIntegration(principal.organizationId),
+    getIntegrations(principal.organizationId),
+  ]);
 
   if (!integration) {
-    return ok({ connected: false });
+    return ok({ connected: false, services: { youtube: null, drive: null } });
   }
 
   const scopes = analyseScopes(integration.scopes);
@@ -39,6 +42,16 @@ export const GET = route(async () => {
       lastError: integration.lastError,
       hasRefreshToken: Boolean(integration.refreshTokenEnc),
       tokenExpiresAt: integration.accessTokenExpiresAt,
+    },
+    // The two halves are authorised separately; the UI needs to know which
+        // one is still outstanding.
+    services: {
+      youtube: perService.youtube
+        ? { email: perService.youtube.email, status: perService.youtube.status }
+        : null,
+      drive: perService.drive
+        ? { email: perService.drive.email, status: perService.drive.status }
+        : null,
     },
     scopes: {
       ok: scopes.ok,
@@ -97,7 +110,9 @@ export const DELETE = route(async (request) => {
     );
   }
 
-  await disconnectIntegration(integration.id);
+  // Removes both halves (YouTube and Drive) — a half-connected integration can
+  // neither publish nor be cleanly reconnected.
+  await disconnectAllIntegrations(principal.organizationId);
 
   await audit({
     organizationId: principal.organizationId,

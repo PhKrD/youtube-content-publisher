@@ -3,9 +3,15 @@ import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Check, ExternalLink, Plug, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireAdminPage } from "@/lib/authz";
-import { getIntegration } from "@/lib/google/client";
-import { analyseScopes, describeScope, PUBLISHING_SCOPES } from "@/lib/google/scopes";
-import { isGoogleOAuthConfigured } from "@/lib/env";
+import { getIntegration, getIntegrations } from "@/lib/google/client";
+import {
+  analyseScopes,
+  describeScope,
+  GOOGLE_SERVICES,
+  PUBLISHING_SCOPES,
+  SERVICE_LABELS,
+} from "@/lib/google/scopes";
+import { isGooglePublishingOAuthConfigured } from "@/lib/env";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, DetailRow, EmptyState, PageHeader } from "@/components/ui/misc";
@@ -19,14 +25,23 @@ export const metadata: Metadata = { title: "Google connection" };
 export default async function IntegrationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connected?: string; error?: string; warning?: string }>;
+  searchParams: Promise<{
+    connected?: string;
+    error?: string;
+    warning?: string;
+    connectNext?: string;
+  }>;
 }) {
   const principal = await requireAdminPage();
-  const { connected, error, warning } = await searchParams;
+  const { connected, error, warning, connectNext } = await searchParams;
 
-  const configured = isGoogleOAuthConfigured();
-  const integration = await getIntegration(principal.organizationId);
+  const configured = isGooglePublishingOAuthConfigured();
+  const [integration, perService] = await Promise.all([
+    getIntegration(principal.organizationId),
+    getIntegrations(principal.organizationId),
+  ]);
   const scopes = integration ? analyseScopes(integration.scopes) : null;
+  const bothConnected = GOOGLE_SERVICES.every((s) => perService[s]);
 
   const [channels, playlistCount] = await Promise.all([
     db.youTubeChannel.findMany({
@@ -48,7 +63,7 @@ export default async function IntegrationsPage({
 
       <PageHeader
         title="Google connection"
-        description="One Google account is used to upload to YouTube and store files in Drive."
+        description="One Google account is used to upload to YouTube and store files in Drive. Google requires the two permissions to be granted in separate steps."
       />
 
       <div className="space-y-4">
@@ -58,19 +73,24 @@ export default async function IntegrationsPage({
           </Alert>
         )}
         {warning && <Alert tone="warn" title="Connected with a warning">{warning}</Alert>}
-        {connected === "1" && !error && !warning && (
-          <Alert tone="success" title="Google connected">
-            Next: confirm the YouTube channel below.
+        {connected && !error && !warning && (
+          <Alert
+            tone={connectNext ? "warn" : "success"}
+            title={`${connected === "drive" ? "Google Drive" : connected === "youtube" ? "YouTube" : "Google"} connected`}
+          >
+            {connectNext
+              ? `One step left: grant ${SERVICE_LABELS[connectNext === "drive" ? "drive" : "youtube"]} access below. Google does not allow both permissions to be requested at once.`
+              : "Both permissions granted. Next: confirm the YouTube channel below."}
           </Alert>
         )}
 
         {!configured && (
           <Alert tone="warn" title="Google OAuth is not configured" icon={AlertTriangle}>
             <p>
-              <code className="font-mono text-xs">GOOGLE_CLIENT_ID</code> and{" "}
-              <code className="font-mono text-xs">GOOGLE_CLIENT_SECRET</code> must be set in the
-              environment. Follow <span className="font-medium">SETUP_GUIDE.md</span> to create
-              them in the Google Cloud Console, then restart the app.
+              <code className="font-mono text-xs">GOOGLE_PUBLISHING_CLIENT_ID</code> and{" "}
+              <code className="font-mono text-xs">GOOGLE_PUBLISHING_CLIENT_SECRET</code> must be
+              set in the environment. Follow <span className="font-medium">SETUP_GUIDE.md</span> to
+              create them in the Google Cloud Console, then restart the app.
             </p>
           </Alert>
         )}
@@ -96,15 +116,69 @@ export default async function IntegrationsPage({
             <EmptyState
               icon={Plug}
               title="No Google account connected"
-              description="Connect the Google account that owns the YouTube channel you want to publish to. You will be taken to Google — this app never sees your password."
+              description="Connect the Google account that owns the YouTube channel you want to publish to. Google requires two separate approvals — YouTube first, then Drive. You will be taken to Google; this app never sees your password."
               action={
                 <Button asChild disabled={!configured}>
-                  <a href="/api/integrations/google/connect">Connect Google</a>
+                  <a href="/api/integrations/google/connect?service=youtube">
+                    Connect YouTube (step 1 of 2)
+                  </a>
                 </Button>
               }
             />
           ) : (
             <CardContent className="space-y-4">
+              {/* ---------- the two grants ---------- */}
+              <ul className="divide-y divide-line rounded-md border border-line">
+                {GOOGLE_SERVICES.map((service, i) => {
+                  const row = perService[service];
+                  const healthy = row?.status === "CONNECTED";
+                  return (
+                    <li
+                      key={service}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
+                    >
+                      <div className="flex items-start gap-2">
+                        {healthy ? (
+                          <Check
+                            className="mt-0.5 size-4 shrink-0 text-success-600"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <X className="mt-0.5 size-4 shrink-0 text-danger-600" aria-hidden="true" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-ink">
+                            {i + 1}. {SERVICE_LABELS[service]}
+                          </p>
+                          <p className="text-xs text-ink-soft">
+                            {row
+                              ? `${row.email}${healthy ? "" : " — needs reconnecting"}`
+                              : "Not connected yet"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        asChild
+                        size="sm"
+                        variant={row ? "secondary" : "primary"}
+                        disabled={!configured}
+                      >
+                        <a href={`/api/integrations/google/connect?service=${service}`}>
+                          {row ? "Reconnect" : "Connect"}
+                        </a>
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {!bothConnected && (
+                <Alert tone="warn" icon={AlertTriangle}>
+                  Publishing stays disabled until both are connected. Google refuses to grant
+                  YouTube and Drive access in a single approval, so they are requested separately.
+                </Alert>
+              )}
+
               <dl className="divide-y divide-line">
                 <DetailRow label="Account">{integration.email}</DetailRow>
                 <DetailRow label="Connected">
@@ -167,9 +241,6 @@ export default async function IntegrationsPage({
               </div>
 
               <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-                <Button asChild variant="secondary" size="sm">
-                  <a href="/api/integrations/google/connect">Reconnect / change account</a>
-                </Button>
                 <DisconnectButton email={integration.email} />
               </div>
             </CardContent>

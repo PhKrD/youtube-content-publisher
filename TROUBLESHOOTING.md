@@ -68,6 +68,42 @@ account.
 
 ## Connecting Google
 
+### "Access blocked: this request contains scopes that cannot be requested together"
+
+```
+Error 400: invalid_request
+This request contains scopes that cannot be requested together :
+[.../auth/drive.file, .../auth/youtube.upload, .../auth/youtube]
+```
+
+Google will not grant Drive access and YouTube access in a single approval.
+The app therefore connects the publishing account in **two** steps — YouTube
+first, then Drive — and stores the two grants separately.
+
+Seeing this error means something asked for both at once. Check, in order:
+
+1. **Are the credentials the right way round?** `GOOGLE_CLIENT_ID` must be the
+   *sign-in* client (scopes: `openid email profile` only) and
+   `GOOGLE_PUBLISHING_CLIENT_ID` the *publishing* client. If the publishing
+   client is used for sign-in, an ordinary login trips this error. See
+   SETUP_GUIDE.md Step 5.
+2. **Is a stale error page being reloaded?** The failing URL is an
+   `accounts.google.com` address, so refreshing that tab reproduces the error
+   forever regardless of any fix. Navigate to the app afresh.
+3. **Has `include_granted_scopes` been re-enabled?** In
+   `src/app/api/integrations/google/connect/route.ts` it must stay `false`.
+   When true, Google silently adds the scopes already granted by the other
+   half, recreating the forbidden combination. `src/lib/google/scopes.test.ts`
+   guards the scope sets themselves.
+
+### Only half the connection is showing
+
+The Google connection page lists **YouTube** and **Google Drive** as two rows
+because they are two separate grants. Publishing stays disabled until both say
+connected. Use the **Connect** button on whichever row is outstanding — and use
+the **same Google account** for both, or the app will hold tokens for two
+different accounts.
+
 ### "Google did not return a refresh token"
 
 Google only issues a refresh token on a full consent, and omits it when
@@ -84,13 +120,17 @@ authorised account can still hit it.
 
 ### "Connected, but some permissions were not granted"
 
-A permission was unticked on the consent screen. All three are required:
+A permission was unticked on the consent screen. All three are required, split
+across the two approvals:
 
-- Google Drive — files created by this app
-- YouTube — upload videos and set thumbnails
-- YouTube — read and manage playlists
+| Approval | Permission |
+| --- | --- |
+| YouTube | YouTube — upload videos and set thumbnails |
+| YouTube | YouTube — read and manage playlists |
+| Drive | Google Drive — files created by this app |
 
-Click **Reconnect / change account** and accept everything.
+Click **Reconnect** on the row named in the message and accept everything it
+asks for.
 
 ### "The connected Google account has no YouTube channel"
 

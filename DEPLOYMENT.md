@@ -60,8 +60,10 @@ DIRECT_URL             (direct)
 AUTH_URL               https://your-domain.com
 AUTH_SECRET            fresh value — NOT the one from development
 TOKEN_ENCRYPTION_KEY   fresh value — NOT the one from development
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
+GOOGLE_CLIENT_ID                 sign-in client
+GOOGLE_CLIENT_SECRET             sign-in client
+GOOGLE_PUBLISHING_CLIENT_ID      publishing client (YouTube + Drive)
+GOOGLE_PUBLISHING_CLIENT_SECRET  publishing client
 PUBLISHING_ENABLED     "false" for the first deploy
 APP_ENV                "production"
 WORKER_SECRET          openssl rand -hex 32
@@ -74,21 +76,27 @@ WORKER_SECRET          openssl rand -hex 32
 
 ### 3. Update Google Cloud for the real domain
 
-At [Credentials](https://console.cloud.google.com/apis/credentials), open your
-OAuth client and add:
+At [Credentials](https://console.cloud.google.com/apis/credentials), open
+**both** OAuth clients and add the production redirect URI to each. They get
+one URI each — the clients are not interchangeable:
 
-**Authorised JavaScript origins**
-```
-https://your-domain.com
-```
-
-**Authorised redirect URIs**
+**Sign-in client → Authorised redirect URIs**
 ```
 https://your-domain.com/api/auth/callback/google
+```
+
+**Publishing client → Authorised redirect URIs**
+```
 https://your-domain.com/api/integrations/google/callback
 ```
 
 Keep the localhost entries so local development still works.
+
+`AUTH_URL` must match the host users actually visit, character for character —
+the callback URL is derived from it. If you deploy to Vercel, use your stable
+production domain, not a per-deployment URL like
+`myapp-a1b2c3-team.vercel.app`, or every deploy invalidates the registered
+redirect URI and sign-in fails with `redirect_uri_mismatch`.
 
 ### 4. The worker
 
@@ -99,7 +107,8 @@ On Railway, Render or Fly.io, create a service from the same repository with:
 - **Build**: `npm ci && npx prisma generate`
 - **Start**: `npm run worker`
 - **Environment**: `DATABASE_URL`, `DIRECT_URL`, `TOKEN_ENCRYPTION_KEY`,
-  `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLISHING_ENABLED`, `APP_ENV`
+  `GOOGLE_PUBLISHING_CLIENT_ID`, `GOOGLE_PUBLISHING_CLIENT_SECRET`,
+  `PUBLISHING_ENABLED`, `APP_ENV`
 
 The worker needs `TOKEN_ENCRYPTION_KEY` because it decrypts the Google tokens
 itself. It does **not** need `AUTH_SECRET` or `AUTH_URL`.

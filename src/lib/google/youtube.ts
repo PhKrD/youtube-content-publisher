@@ -35,7 +35,7 @@ async function api(organizationId: string): Promise<{
   youtube: youtube_v3.Youtube;
   accessToken: string;
 }> {
-  const { client, accessToken } = await getAuthorizedClient(organizationId);
+  const { client, accessToken } = await getAuthorizedClient(organizationId, "youtube");
   return { youtube: google.youtube({ version: "v3", auth: client }), accessToken };
 }
 

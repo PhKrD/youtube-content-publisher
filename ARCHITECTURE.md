@@ -160,23 +160,60 @@ the human intervention actually required.
 
 ---
 
-## Two Google flows, on purpose
+## Three Google flows: one to sign in, two to publish
 
-| | Sign-in | Publishing |
-|---|---|---|
-| Who | every user | one administrator |
-| Scopes | `openid email profile` | `drive.file`, `youtube.upload`, `youtube` |
-| Stored | Auth.js session | `IntegrationAccount`, encrypted |
-| Endpoint | `/api/auth/callback/google` | `/api/integrations/google/callback` |
+| | Sign-in | Publishing / YouTube | Publishing / Drive |
+|---|---|---|---|
+| Who | every user | one administrator | the same administrator |
+| OAuth client | `GOOGLE_CLIENT_*` | `GOOGLE_PUBLISHING_CLIENT_*` | `GOOGLE_PUBLISHING_CLIENT_*` |
+| Scopes | `openid email profile` | `youtube.upload`, `youtube` | `drive.file` |
+| Stored | Auth.js session | `IntegrationAccount` (`provider="google_youtube"`) | `IntegrationAccount` (`provider="google_drive"`) |
+| Endpoint | `/api/auth/callback/google` | `/api/integrations/google/callback` | `/api/integrations/google/callback` |
 
 Asking every student to grant upload access to the organisation's channel would
 be both a consent-screen nightmare and a least-privilege violation. One admin
-consents; everyone else just signs in.
+consents; everyone else just signs in. Sign-in uses a **separate OAuth client**
+so that a plain login can never present a YouTube or Drive permission prompt,
+and so the sign-in secret is worthless for touching the channel.
+
+### Why publishing takes two consents, not one
+
+Google's authorization server rejects any single request that mixes Drive
+scopes with YouTube scopes:
+
+```
+Error 400: invalid_request
+This request contains scopes that cannot be requested together
+```
+
+So the publishing account is connected twice — YouTube, then Drive — and the
+two grants are stored as two `IntegrationAccount` rows distinguished by
+`provider`. `getAuthorizedClient(orgId, service)` hands out the grant for the
+service about to be called, and checks only *that* service's scopes; requiring
+the full set would make every Drive call fail whenever the YouTube half was
+missing, and vice versa.
+
+Consequences worth knowing:
+
+- `include_granted_scopes` must stay **off**. When on, Google adds the scopes
+  already granted by the other half and recreates the forbidden combination.
+- Each grant has its own refresh token, so the two halves can expire
+  independently; the UI reports them as two rows and publishing stays disabled
+  until both are healthy.
+- `getIntegration(orgId)` returns a merged view (union of both grants' scopes)
+  for the many pages that only care whether the organisation can publish at
+  all. `scopes.test.ts` pins the mutual-exclusion invariant.
+- Disconnecting removes **both** rows. A half-connected integration can neither
+  publish nor be cleanly reconnected.
+- A pre-split `provider="google"` row is still honoured on read, so an
+  organisation connected before this change keeps working until it reconnects.
 
 The publishing flow adds **PKCE** and a **state cookie**. State prevents an
 attacker completing consent inside an admin's session and silently repointing
 the organisation at their own channel. PKCE prevents an intercepted
-authorization code being redeemed elsewhere.
+authorization code being redeemed elsewhere. Which half is being connected is
+also kept in a server-side cookie rather than round-tripped through Google, so
+the callback cannot be tricked into filing a Drive grant as a YouTube one.
 
 ### Why `drive.file` and not `drive`
 

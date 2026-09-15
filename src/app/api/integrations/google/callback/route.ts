@@ -6,9 +6,9 @@ import { env } from "@/lib/env";
 import { audit, AuditAction } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { mapGoogleError, toAppError } from "@/lib/errors";
-import { createOAuthClient, storeIntegrationTokens } from "@/lib/google/client";
+import { createOAuthClient, getIntegrations, storeIntegrationTokens } from "@/lib/google/client";
 import { completeOAuthFlow } from "@/lib/google/oauth-state";
-import { analyseScopes } from "@/lib/google/scopes";
+import { analyseServiceScopes, SERVICE_LABELS } from "@/lib/google/scopes";
 import { fetchMyChannel, syncPlaylists } from "@/lib/google/youtube";
 import { ensureFolderTree } from "@/lib/google/drive";
 
@@ -16,19 +16,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * OAuth callback for the publishing account.
+ * OAuth callback for ONE half of the publishing account.
  *
- * Does the whole connection in one pass so the admin lands on a page that
- * already shows the channel and playlists rather than a bare "connected":
+ * Which half is decided by the server-side flow cookie, not by anything Google
+ * echoes back (see lib/google/oauth-state.ts).
+ *
  *   1. validate state, exchange the code (PKCE)
  *   2. identify the Google account
- *   3. store tokens, encrypted
- *   4. read the YouTube channel (still UNCONFIRMED — Section 9)
- *   5. create the Drive folder tree
- *   6. cache the playlists
+ *   3. store tokens, encrypted, filed under that service
+ *   4. run that service's setup: YouTube -> read channel (still UNCONFIRMED,
+ *      Section 9) and cache playlists; Drive -> create the folder tree
  *
- * Steps 4–6 are best-effort: a failure there must not discard a perfectly
- * good token, or the admin would be stuck in a reconnect loop.
+ * Step 4 is best-effort: a failure there must not discard a perfectly good
+ * token, or the admin would be stuck in a reconnect loop.
  */
 export const GET = route(async (request) => {
   const principal = await requireAdmin();
@@ -73,7 +73,10 @@ export const GET = route(async (request) => {
     // ---- 2. confirm which account consented ----
     client.setCredentials(tokens);
     const idToken = tokens.id_token
-      ? await client.verifyIdToken({ idToken: tokens.id_token, audience: env.GOOGLE_CLIENT_ID })
+      ? await client.verifyIdToken({
+          idToken: tokens.id_token,
+          audience: env.GOOGLE_PUBLISHING_CLIENT_ID,
+        })
       : null;
     const payload = idToken?.getPayload();
 
@@ -84,11 +87,12 @@ export const GET = route(async (request) => {
     }
 
     // ---- 3. check we got everything we asked for ----
-    const scopeReport = analyseScopes(tokens.scope);
+    const scopeReport = analyseServiceScopes(verified.service, tokens.scope);
 
     // ---- 4. store (encrypted) ----
     const integration = await storeIntegrationTokens({
       organizationId: principal.organizationId,
+      service: verified.service,
       googleUserId: payload.sub,
       email: payload.email,
       displayName: payload.name ?? null,
@@ -106,19 +110,35 @@ export const GET = route(async (request) => {
       action: AuditAction.INTEGRATION_CONNECTED,
       entityType: "IntegrationAccount",
       entityId: integration.id,
-      newValue: { email: payload.email, scopes: scopeReport.granted },
+      newValue: { email: payload.email, service: verified.service, scopes: scopeReport.granted },
       request,
     });
 
     if (!scopeReport.ok) {
       return redirectWith(returnTo, {
-        error:
-          "Connected, but some permissions were not granted. Please reconnect and accept every permission Google asks for.",
+        error: `Connected ${SERVICE_LABELS[verified.service]}, but some permissions were not granted. Please reconnect and accept every permission Google asks for.`,
       });
     }
 
-    // ---- 5. channel, folders, playlists (best-effort) ----
+    // ---- 5. per-service setup (best-effort) ----
     let channelWarning: string | null = null;
+
+    if (verified.service === "drive") {
+      let driveWarning: string | null = null;
+      try {
+        await ensureFolderTree(principal.organizationId);
+      } catch (e) {
+        driveWarning = mapGoogleError(e, "drive").userMessage;
+        logger.warn("drive folder setup deferred", { error: toAppError(e).detail });
+      }
+
+      return redirectWith(returnTo, {
+        connected: "drive",
+        ...(driveWarning === null ? {} : { warning: driveWarning }),
+        ...(await nextStepParam(principal.organizationId)),
+      });
+    }
+
     try {
       const channel = await fetchMyChannel(principal.organizationId);
 
@@ -157,10 +177,8 @@ export const GET = route(async (request) => {
         },
       });
 
-      await ensureFolderTree(principal.organizationId).catch((e) => {
-        logger.warn("drive folder setup deferred", { error: toAppError(e).detail });
-      });
-
+      // Drive setup deliberately does NOT happen here — it needs the Drive
+      // grant, which is a separate consent flow.
       await syncPlaylists(principal.organizationId, saved.id).catch((e) => {
         logger.warn("playlist sync deferred", { error: toAppError(e).detail });
       });
@@ -171,8 +189,9 @@ export const GET = route(async (request) => {
     }
 
     return redirectWith(returnTo, {
-      connected: "1",
+      connected: "youtube",
       ...(channelWarning ? { warning: channelWarning } : {}),
+      ...(await nextStepParam(principal.organizationId)),
     });
   } catch (e) {
     const appError = toAppError(e);
@@ -184,5 +203,16 @@ export const GET = route(async (request) => {
     const target = new URL(path, env.AUTH_URL);
     for (const [k, v] of Object.entries(params)) target.searchParams.set(k, v);
     return NextResponse.redirect(target);
+  }
+
+  /**
+   * Tells the settings page which half is still outstanding, so it can prompt
+   * for the second consent instead of looking finished after the first.
+   */
+  async function nextStepParam(organizationId: string): Promise<Record<string, string>> {
+    const { youtube, drive } = await getIntegrations(organizationId);
+    if (!youtube) return { connectNext: "youtube" };
+    if (!drive) return { connectNext: "drive" };
+    return {};
   }
 });

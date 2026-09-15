@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { safeEqual } from "../crypto";
 import { Errors } from "../errors";
+import type { GoogleService } from "./scopes";
 
 /**
  * CSRF + PKCE state for the publishing-account OAuth flow.
@@ -24,6 +25,7 @@ import { Errors } from "../errors";
 const STATE_COOKIE = "ycp_oauth_state";
 const VERIFIER_COOKIE = "ycp_oauth_verifier";
 const RETURN_COOKIE = "ycp_oauth_return";
+const SERVICE_COOKIE = "ycp_oauth_service";
 const TTL_SECONDS = 600; // 10 minutes
 
 function base64url(buf: Buffer): string {
@@ -35,8 +37,17 @@ export interface StartedFlow {
   codeChallenge: string;
 }
 
-/** Generates state + PKCE and stores the secrets in cookies. */
-export async function beginOAuthFlow(returnTo = "/admin/integrations"): Promise<StartedFlow> {
+/**
+ * Generates state + PKCE and stores the secrets in cookies.
+ *
+ * `service` says which half of the publishing integration is being connected.
+ * It is kept server-side in a cookie rather than round-tripped through Google,
+ * so the callback cannot be tricked into filing a Drive grant as a YouTube one.
+ */
+export async function beginOAuthFlow(
+  returnTo = "/admin/integrations",
+  service: GoogleService = "youtube",
+): Promise<StartedFlow> {
   const state = base64url(randomBytes(32));
   const verifier = base64url(randomBytes(64));
   const codeChallenge = base64url(createHash("sha256").update(verifier).digest());
@@ -52,6 +63,7 @@ export async function beginOAuthFlow(returnTo = "/admin/integrations"): Promise<
 
   jar.set(STATE_COOKIE, state, common);
   jar.set(VERIFIER_COOKIE, verifier, common);
+  jar.set(SERVICE_COOKIE, service, common);
   // Only same-origin relative paths, so this cannot become an open redirect.
   jar.set(
     RETURN_COOKIE,
@@ -65,6 +77,7 @@ export async function beginOAuthFlow(returnTo = "/admin/integrations"): Promise<
 export interface VerifiedFlow {
   codeVerifier: string;
   returnTo: string;
+  service: GoogleService;
 }
 
 /**
@@ -76,10 +89,12 @@ export async function completeOAuthFlow(returnedState: string | null): Promise<V
   const expected = jar.get(STATE_COOKIE)?.value;
   const verifier = jar.get(VERIFIER_COOKIE)?.value;
   const returnTo = jar.get(RETURN_COOKIE)?.value ?? "/admin/integrations";
+  const rawService = jar.get(SERVICE_COOKIE)?.value;
 
   jar.delete(STATE_COOKIE);
   jar.delete(VERIFIER_COOKIE);
   jar.delete(RETURN_COOKIE);
+  jar.delete(SERVICE_COOKIE);
 
   if (!expected || !verifier) {
     throw Errors.validation(
@@ -90,5 +105,7 @@ export async function completeOAuthFlow(returnedState: string | null): Promise<V
     throw Errors.forbidden("oauth state mismatch");
   }
 
-  return { codeVerifier: verifier, returnTo };
+  const service: GoogleService = rawService === "drive" ? "drive" : "youtube";
+
+  return { codeVerifier: verifier, returnTo, service };
 }

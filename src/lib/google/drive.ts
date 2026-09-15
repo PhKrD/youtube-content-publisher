@@ -35,7 +35,7 @@ async function client(organizationId: string): Promise<{
   drive: drive_v3.Drive;
   accessToken: string;
 }> {
-  const { client: auth, accessToken } = await getAuthorizedClient(organizationId);
+  const { client: auth, accessToken } = await getAuthorizedClient(organizationId, "drive");
   return { drive: google.drive({ version: "v3", auth }), accessToken };
 }
 

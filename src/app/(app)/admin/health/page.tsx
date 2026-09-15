@@ -3,7 +3,13 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { db, pingDatabase } from "@/lib/db";
 import { requireAdminPage } from "@/lib/authz";
-import { assertEnv, env, isGoogleOAuthConfigured, isPublishingEnabledGlobally } from "@/lib/env";
+import {
+  assertEnv,
+  env,
+  isGoogleOAuthConfigured,
+  isGooglePublishingOAuthConfigured,
+  isPublishingEnabledGlobally,
+} from "@/lib/env";
 import { checkIntegrationHealth } from "@/lib/google/client";
 import { getQueueStats } from "@/lib/publishing/queue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,12 +68,22 @@ export default async function HealthPage() {
       hint: envCheck.ok ? undefined : envCheck.error,
     },
     {
-      name: "Google OAuth credentials",
+      name: "Google sign-in credentials",
       level: isGoogleOAuthConfigured() ? "ok" : "error",
       detail: isGoogleOAuthConfigured()
         ? "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set"
         : "Not configured",
       hint: isGoogleOAuthConfigured() ? undefined : "See SETUP_GUIDE.md.",
+    },
+    {
+      name: "Google publishing credentials",
+      level: isGooglePublishingOAuthConfigured() ? "ok" : "error",
+      detail: isGooglePublishingOAuthConfigured()
+        ? "GOOGLE_PUBLISHING_CLIENT_ID and GOOGLE_PUBLISHING_CLIENT_SECRET are set"
+        : "Not configured",
+      hint: isGooglePublishingOAuthConfigured()
+        ? undefined
+        : "A second OAuth client is required for YouTube/Drive access. See SETUP_GUIDE.md.",
     },
     {
       name: "Google account",

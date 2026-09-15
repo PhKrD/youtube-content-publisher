@@ -3,9 +3,12 @@ import Link from "next/link";
 import { Check, Circle, ExternalLink } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireAdminPage } from "@/lib/authz";
-import { isGoogleOAuthConfigured, isPublishingEnabledGlobally } from "@/lib/env";
-import { getIntegration } from "@/lib/google/client";
-import { analyseScopes } from "@/lib/google/scopes";
+import {
+  isGoogleOAuthConfigured,
+  isGooglePublishingOAuthConfigured,
+  isPublishingEnabledGlobally,
+} from "@/lib/env";
+import { getIntegration, getIntegrations } from "@/lib/google/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert, PageHeader, Progress } from "@/components/ui/misc";
@@ -46,32 +49,41 @@ export default async function SetupPage() {
     ]);
 
   const [titleCount, descriptionCount] = templates;
-  const scopes = integration ? analyseScopes(integration.scopes) : null;
+  const services = await getIntegrations(principal.organizationId);
+  const publishingConfigured = isGooglePublishingOAuthConfigured();
 
   const steps = [
     {
       title: "Create Google Cloud credentials",
-      done: isGoogleOAuthConfigured(),
-      body: "Create a Google Cloud project, enable the YouTube Data API v3 and the Google Drive API, then create an OAuth client. Put the client ID and secret in your environment file.",
+      done: isGoogleOAuthConfigured() && publishingConfigured,
+      body: "Create a Google Cloud project, enable the YouTube Data API v3 and the Google Drive API, then create two OAuth clients: one for sign-in and one for publishing. Put both pairs of credentials in your environment file.",
       action: null,
       doc: "SETUP_GUIDE.md — steps 1 to 6",
     },
     {
-      title: "Connect the Google account",
-      done: Boolean(integration && integration.status === "CONNECTED"),
-      body: "Sign in with the Google account that owns the YouTube channel. This app never sees your password.",
-      action: isGoogleOAuthConfigured()
-        ? { href: "/api/integrations/google/connect?returnTo=/setup", label: "Connect Google", external: true }
+      title: "Connect YouTube",
+      done: Boolean(services.youtube && services.youtube.status === "CONNECTED"),
+      body: "Sign in with the Google account that owns the YouTube channel and approve upload and playlist access. This app never sees your password.",
+      action: publishingConfigured
+        ? {
+            href: "/api/integrations/google/connect?service=youtube&returnTo=/setup",
+            label: services.youtube ? "Reconnect YouTube" : "Connect YouTube",
+            external: true,
+          }
         : null,
     },
     {
-      title: "Grant all permissions",
-      done: Boolean(scopes?.ok),
-      body: "Google Drive (files created by this app), YouTube upload, and YouTube playlist management are all required.",
-      action:
-        integration && !scopes?.ok
-          ? { href: "/api/integrations/google/connect?returnTo=/setup", label: "Reconnect", external: true }
-          : null,
+      title: "Connect Google Drive",
+      done: Boolean(services.drive && services.drive.status === "CONNECTED"),
+      // This is a Google restriction, not a design choice — see lib/google/scopes.ts.
+      body: "A second, separate approval for Drive access. Google refuses to grant YouTube and Drive permissions in one step, so they are requested one after the other. Use the same Google account.",
+      action: publishingConfigured
+        ? {
+            href: "/api/integrations/google/connect?service=drive&returnTo=/setup",
+            label: services.drive ? "Reconnect Drive" : "Connect Drive",
+            external: true,
+          }
+        : null,
     },
     {
       title: "Confirm the YouTube channel",

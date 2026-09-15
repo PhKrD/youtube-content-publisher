@@ -85,10 +85,22 @@ channel.
 
 ---
 
+There are **two** OAuth clients, and therefore two pairs of credentials. They
+are not interchangeable:
+
+| Pair | Client | Scopes it requests | Redirect URI |
+| --- | --- | --- | --- |
+| `GOOGLE_CLIENT_*` | Sign-in | `openid email profile` | `/api/auth/callback/google` |
+| `GOOGLE_PUBLISHING_CLIENT_*` | Publishing | YouTube + Drive | `/api/integrations/google/callback` |
+
+Swapping them makes ordinary sign-in fail with `Error 400: invalid_request`
+("scopes that cannot be requested together"), because Google will not issue
+Drive and YouTube access in one approval.
+
 ### `GOOGLE_CLIENT_ID`
 
-OAuth client ID from the Google Cloud Console. Not secret — it is visible in
-the browser during sign-in — but it is environment-specific.
+OAuth client ID of the **sign-in** client. Not secret — it is visible in the
+browser during sign-in — but it is environment-specific.
 
 Looks like `123456789-abcdefg.apps.googleusercontent.com`.
 
@@ -99,7 +111,25 @@ Looks like `123456789-abcdefg.apps.googleusercontent.com`.
 The matching client secret. Looks like `GOCSPX-…`.
 
 If it leaks, delete the OAuth client in the Google Cloud Console and create a
-new one. Rotating it invalidates nothing else.
+new one. Rotating it signs everyone out at most; it grants no access to your
+channel or Drive.
+
+---
+
+### `GOOGLE_PUBLISHING_CLIENT_ID`
+
+OAuth client ID of the **publishing** client — the one an admin uses to grant
+YouTube and Drive access. Must be a *different* client from the sign-in one.
+
+---
+
+### `GOOGLE_PUBLISHING_CLIENT_SECRET` 🔒
+
+The matching client secret.
+
+This one is the sensitive half: it is the credential behind uploads to your
+YouTube channel. If it leaks, delete that OAuth client in the Google Cloud
+Console, create a new one, and have an admin reconnect both halves.
 
 ---
 
@@ -198,6 +228,8 @@ every log call regardless of level.
 | `TOKEN_ENCRYPTION_KEY` | ✅ | 🔒 | — |
 | `GOOGLE_CLIENT_ID` | ✅ | | `""` |
 | `GOOGLE_CLIENT_SECRET` | ✅ | 🔒 | `""` |
+| `GOOGLE_PUBLISHING_CLIENT_ID` | ✅ | | `""` |
+| `GOOGLE_PUBLISHING_CLIENT_SECRET` | ✅ | 🔒 | `""` |
 | `PUBLISHING_ENABLED` | | | `false` |
 | `APP_ENV` | | | `development` |
 | `WORKER_SECRET` | for cron | 🔒 | `""` |
