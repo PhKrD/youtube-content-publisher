@@ -35,9 +35,14 @@ const REDACTED = "[redacted]";
 function scrubString(s: string): string {
   let out = s;
   // Resumable session URIs (Drive & YouTube) carry an `upload_id` capability.
-  out = out.replace(/([?&](upload_id|upload_protocol)=)[^&\s"']+/gi, `$1${REDACTED}`);
+  // Matched on a word boundary rather than `[?&]` because Google's own error
+  // messages quote these parameters in prose, outside any URL.
+  out = out.replace(/\b(upload_id|upload_protocol)=[^&\s"'<>]+/gi, `$1=${REDACTED}`);
   // OAuth authorization codes and tokens appearing in URLs or messages.
-  out = out.replace(/([?&](code|access_token|refresh_token|id_token|client_secret|state)=)[^&\s"']+/gi, `$1${REDACTED}`);
+  out = out.replace(
+    /\b(code|access_token|refresh_token|id_token|client_secret|state)=[^&\s"'<>]+/gi,
+    `$1=${REDACTED}`,
+  );
   // Bearer headers.
   out = out.replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/g, `$1${REDACTED}`);
   // Google token shapes (ya29.* access tokens, 1//* refresh tokens).
