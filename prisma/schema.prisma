@@ -1,0 +1,874 @@
+// =============================================================================
+// YouTube Content Publisher — data model
+// =============================================================================
+// Design notes:
+//  * Every tenant-scoped row carries `organizationId` so the app can grow into
+//    real multi-tenancy (Section 45) without a migration of the core tables.
+//    V1 seeds exactly one organization.
+//  * Publishing is modelled as a *durable state machine* (PublishingJob) plus a
+//    *record of what already happened irreversibly* (YouTubePublication). The
+//    split is what makes retries idempotent: we never re-do a step whose
+//    completion timestamp is already set.
+//  * OAuth tokens live in IntegrationAccount, encrypted at rest by the
+//    application (AES-256-GCM) — never in plaintext, never in the client.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7 no longer accepts connection URLs here. At runtime the URL is
+// supplied via the `pg` driver adapter (see src/lib/db.ts); for migrations it
+// comes from prisma.config.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  REVIEWER
+  CONTRIBUTOR
+}
+
+enum ApprovalMode {
+  DIRECT_PUBLISH
+  APPROVAL_REQUIRED
+}
+
+enum ContentType {
+  VIDEO
+  SHORT
+  IMAGE
+  COMMUNITY_POST
+}
+
+/// Lifecycle of a piece of content. Ordering here is roughly chronological.
+enum SubmissionStatus {
+  DRAFT
+  UPLOADING
+  UPLOADED_TO_DRIVE
+  READY
+  SUBMITTED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+enum MediaKind {
+  VIDEO
+  THUMBNAIL
+  SUPPORTING_IMAGE
+}
+
+enum UploadState {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
+/// Durable state of a publishing job.
+enum JobState {
+  QUEUED
+  RUNNING
+  WAITING_RETRY
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+/// The individual, independently-retryable steps of publishing.
+/// A retry resumes at the first step that has not recorded completion.
+enum JobStep {
+  CREATE_YOUTUBE_UPLOAD
+  RELAY_BYTES
+  APPLY_THUMBNAIL
+  ADD_TO_PLAYLIST
+  VERIFY
+  DONE
+}
+
+enum ReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+enum PrivacyStatus {
+  PRIVATE
+  UNLISTED
+  PUBLIC
+}
+
+enum PublishMode {
+  NOW
+  SCHEDULED
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  NEEDS_RECONSENT
+  REVOKED
+  ERROR
+}
+
+enum DriveFolderKind {
+  ROOT
+  DRAFTS
+  READY_FOR_REVIEW
+  APPROVED
+  PUBLISHED
+  FAILED
+  ARCHIVE
+  THUMBNAILS
+}
+
+enum NotificationType {
+  SUBMISSION_SUBMITTED
+  SUBMISSION_APPROVED
+  SUBMISSION_CHANGES_REQUESTED
+  SUBMISSION_REJECTED
+  PUBLISH_STARTED
+  PUBLISH_SUCCEEDED
+  PUBLISH_FAILED
+  UPLOAD_COMPLETED
+  INTEGRATION_NEEDS_ATTENTION
+}
+
+enum TemplateInputType {
+  TEXT
+  TEXTAREA
+  DATE
+  SELECT
+  URL
+}
+
+// -----------------------------------------------------------------------------
+// Tenancy & configuration
+// -----------------------------------------------------------------------------
+
+model Organization {
+  id        String @id @default(cuid())
+  name      String
+  slug      String @unique
+
+  approvalMode ApprovalMode @default(APPROVAL_REQUIRED)
+
+  /// Master safety switch (Section 9/40). Until an admin explicitly enables
+  /// this, the publishing engine refuses to touch the real YouTube channel.
+  productionPublishingEnabled Boolean   @default(false)
+  productionEnabledAt         DateTime?
+  productionEnabledById       String?
+
+  /// IANA timezone used to interpret scheduled publish times.
+  timezone String @default("Asia/Kolkata")
+
+  /// Upload guardrails (Section 36 "Upload Limits").
+  maxVideoBytes     BigInt @default(5368709120) // 5 GiB
+  maxThumbnailBytes BigInt @default(2097152) //   2 MiB (YouTube's own limit)
+
+  setupCompletedAt DateTime?
+  setupStep        Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users               User[]
+  submissions         Submission[]
+  integrationAccounts IntegrationAccount[]
+  channels            YouTubeChannel[]
+  playlists           Playlist[]
+  driveFolders        DriveFolder[]
+  titleTemplates      TitleTemplate[]
+  descriptionTemplates DescriptionTemplate[]
+  tagGroups           TagGroup[]
+  mediaFiles          MediaFile[]
+  publications        YouTubePublication[]
+  jobs                PublishingJob[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  settings            Setting[]
+  invites             Invite[]
+
+  @@index([slug])
+}
+
+/// Generic key/value org settings for things that do not deserve a column yet.
+model Setting {
+  id             String @id @default(cuid())
+  organizationId String
+  key            String
+  value          Json
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+}
+
+// -----------------------------------------------------------------------------
+// Identity — Auth.js (login only; publishing uses IntegrationAccount)
+// -----------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+
+  organizationId String?
+  role           Role    @default(CONTRIBUTOR)
+
+  /// Section 29: a contributor may publish ONLY if explicitly authorised.
+  /// Admins always may. Never settable by the user themselves.
+  canPublishDirectly Boolean @default(false)
+
+  disabledAt  DateTime?
+  lastLoginAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  accounts      Account[]
+  sessions      Session[]
+  submissions   Submission[]        @relation("SubmissionCreator")
+  approvals     Submission[]        @relation("SubmissionApprover")
+  reviews       Review[]
+  uploads       MediaFile[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  events        SubmissionEvent[]
+  connected     IntegrationAccount[]
+  invitesSent   Invite[]
+
+  @@index([organizationId, role])
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+/// Admin-issued invitation, so access is allow-listed rather than
+/// "anyone with a Google account can sign in".
+model Invite {
+  id             String @id @default(cuid())
+  organizationId String
+  email          String
+  role           Role   @default(CONTRIBUTOR)
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+
+  invitedById String
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([email])
+}
+
+// -----------------------------------------------------------------------------
+// Google integration
+// -----------------------------------------------------------------------------
+
+/// The Google account used to publish. Deliberately separate from `Account`
+/// (login identity) so we request upload scopes from ONE admin rather than
+/// from every student.
+model IntegrationAccount {
+  id             String @id @default(cuid())
+  organizationId String
+  provider       String @default("google")
+
+  googleUserId String
+  email        String
+  displayName  String?
+  avatarUrl    String?
+
+  /// AES-256-GCM ciphertext. Never logged, never sent to the browser.
+  accessTokenEnc  String  @db.Text
+  refreshTokenEnc String? @db.Text
+  accessTokenExpiresAt DateTime?
+
+  /// Space-delimited granted scopes, used to detect insufficient permission
+  /// before attempting an operation that would fail.
+  scopes String @db.Text
+
+  status    IntegrationStatus @default(CONNECTED)
+  lastError String?           @db.Text
+  lastErrorAt DateTime?
+  lastRefreshAt DateTime?
+  lastCheckedAt DateTime?
+
+  connectedById String?
+  connectedAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectedBy  User?            @relation(fields: [connectedById], references: [id], onDelete: SetNull)
+  channels     YouTubeChannel[]
+
+  @@unique([organizationId, provider, googleUserId])
+  @@index([organizationId, status])
+}
+
+model YouTubeChannel {
+  id                   String @id @default(cuid())
+  organizationId       String
+  integrationAccountId String
+
+  youtubeChannelId String
+  title            String
+  description      String? @db.Text
+  customUrl        String?
+  thumbnailUrl     String?
+  uploadsPlaylistId String?
+
+  subscriberCount BigInt?
+  videoCount      BigInt?
+
+  /// Section 9: an admin must explicitly tick "yes, this is the channel".
+  /// The publishing engine refuses to run against an unconfirmed channel.
+  confirmedAt   DateTime?
+  confirmedById String?
+
+  isDefault Boolean  @default(false)
+  syncedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integrationAccount IntegrationAccount @relation(fields: [integrationAccountId], references: [id], onDelete: Cascade)
+
+  playlists    Playlist[]
+  submissions  Submission[]
+  publications YouTubePublication[]
+
+  @@unique([organizationId, youtubeChannelId])
+  @@index([organizationId, isDefault])
+}
+
+/// Cached playlist metadata. Cached deliberately: listing playlists on every
+/// page view would burn the YouTube quota (Section 48).
+model Playlist {
+  id             String @id @default(cuid())
+  organizationId String
+  channelId      String
+
+  youtubePlaylistId String
+  title             String
+  description       String? @db.Text
+  itemCount         Int     @default(0)
+  privacyStatus     String?
+  thumbnailUrl      String?
+
+  /// Admins can restrict which playlists contributors may target.
+  isAllowed Boolean @default(true)
+  isDefault Boolean @default(false)
+
+  syncedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel      YouTubeChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  submissions  Submission[]
+
+  @@unique([organizationId, youtubePlaylistId])
+  @@index([organizationId, isAllowed])
+}
+
+model DriveFolder {
+  id             String          @id @default(cuid())
+  organizationId String
+  kind           DriveFolderKind
+
+  driveFolderId String
+  name          String
+  webViewLink   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind])
+}
+
+// -----------------------------------------------------------------------------
+// Templates (Sections 15–18)
+// -----------------------------------------------------------------------------
+
+model TitleTemplate {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+
+  /// e.g. "{{PROGRAM_NAME}} | {{TOPIC}} | {{SPEAKER_NAME}}"
+  pattern String @db.Text
+
+  maxLength Int     @default(100) // YouTube's hard limit
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variables    TemplateVariable[]
+  submissions  Submission[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+}
+
+model DescriptionTemplate {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+
+  /// Body containing {{VARIABLE}} placeholders.
+  body String @db.Text
+
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variables    TemplateVariable[]
+  submissions  Submission[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+}
+
+/// Declares one {{PLACEHOLDER}}. `isLocked` is the server-side teeth behind
+/// Section 17: a locked variable's value comes from `lockedValue` and any
+/// value submitted by the client for it is discarded.
+model TemplateVariable {
+  id String @id @default(cuid())
+
+  titleTemplateId       String?
+  descriptionTemplateId String?
+
+  key       String // e.g. "SPEAKER_NAME"
+  label     String
+  helpText  String?
+  inputType TemplateInputType @default(TEXT)
+
+  required Boolean @default(true)
+
+  isLocked    Boolean @default(false)
+  lockedValue String? @db.Text
+
+  defaultValue String? @db.Text
+  options      Json? // for SELECT
+  maxLength    Int?
+  sortOrder    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  titleTemplate       TitleTemplate?       @relation(fields: [titleTemplateId], references: [id], onDelete: Cascade)
+  descriptionTemplate DescriptionTemplate? @relation(fields: [descriptionTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([titleTemplateId, key])
+  @@unique([descriptionTemplateId, key])
+  @@index([descriptionTemplateId, sortOrder])
+}
+
+model TagGroup {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+
+  tags String[]
+
+  /// Mandatory groups are always merged into the final tag list server-side
+  /// and cannot be dropped by the client (Section 18).
+  isMandatory Boolean @default(false)
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+}
+
+// -----------------------------------------------------------------------------
+// Content
+// -----------------------------------------------------------------------------
+
+model Submission {
+  id             String @id @default(cuid())
+  organizationId String
+  createdById    String
+
+  /// Short human-quotable reference, e.g. SUB-000042 (Section 32).
+  reference String
+
+  contentType ContentType      @default(VIDEO)
+  status      SubmissionStatus @default(DRAFT)
+
+  // --- content information (Section 13) ---
+  program    String?
+  topic      String?
+  speaker    String?
+  recordedOn DateTime?
+  location   String?
+
+  // --- templates & generated metadata ---
+  titleTemplateId       String?
+  descriptionTemplateId String?
+  /// Raw values the contributor typed for template variables.
+  templateValues        Json    @default("{}")
+  /// Server-rendered final strings. Written on submit/publish so that what was
+  /// reviewed is exactly what gets published.
+  computedTitle       String? @db.Text
+  computedDescription String? @db.Text
+  /// Set when the contributor overrides the generated title by hand (allowed
+  /// only if the org permits it).
+  titleOverride String? @db.Text
+
+  // --- YouTube target ---
+  channelId       String?
+  playlistId      String?
+  categoryId      String        @default("22") // "People & Blogs"
+  defaultLanguage String        @default("en")
+  privacyStatus   PrivacyStatus @default(PRIVATE)
+  publishMode     PublishMode   @default(NOW)
+  scheduledAt     DateTime?
+  tags            String[]
+  madeForKids     Boolean       @default(false)
+
+  // --- duplicate prevention (Section 26) ---
+  /// Stable per-submission key. Reused for every publish attempt so that a
+  /// double-click can never create two YouTube videos.
+  idempotencyKey String @unique @default(cuid())
+
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  approvedById  String?
+  publishedAt   DateTime?
+  archivedAt    DateTime?
+  lastFailureAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy           User                 @relation("SubmissionCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  approvedBy          User?                @relation("SubmissionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  titleTemplate       TitleTemplate?       @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
+  descriptionTemplate DescriptionTemplate? @relation(fields: [descriptionTemplateId], references: [id], onDelete: SetNull)
+  channel             YouTubeChannel?      @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  playlist            Playlist?            @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+
+  mediaFiles  MediaFile[]
+  reviews     Review[]
+  events      SubmissionEvent[]
+  jobs        PublishingJob[]
+  publication YouTubePublication?
+  notifications Notification[]
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status, updatedAt])
+  @@index([organizationId, createdById, status])
+  @@index([organizationId, program])
+  @@index([organizationId, speaker])
+  @@index([playlistId])
+}
+
+model MediaFile {
+  id             String @id @default(cuid())
+  organizationId String
+  submissionId   String
+  kind           MediaKind
+
+  originalFilename String
+  mimeType         String
+  sizeBytes        BigInt
+
+  /// SHA-256 of the file as computed in the browser. Used for duplicate
+  /// detection and post-upload integrity comparison against Drive's md5.
+  checksumSha256 String?
+  driveMd5       String?
+
+  // image/video probe results, used for validation messaging
+  width           Int?
+  height          Int?
+  durationSeconds Float?
+
+  // --- Google Drive ---
+  driveFileId     String?
+  driveFolderId   String?
+  driveWebViewLink String?
+
+  // --- resumable upload bookkeeping (Section 12/25) ---
+  uploadState UploadState @default(PENDING)
+  /// Google resumable session URI. A capability URL scoped to this one file;
+  /// treated as a secret and never returned after the upload completes.
+  resumableSessionUri String?   @db.Text
+  resumableExpiresAt  DateTime?
+  bytesReceived       BigInt    @default(0)
+  uploadAttempts      Int       @default(0)
+  lastError           String?   @db.Text
+
+  uploadedById String?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submission   Submission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([submissionId, kind])
+  @@index([organizationId, checksumSha256])
+  @@index([uploadState])
+}
+
+/// The irreversible record of what exists on YouTube. Written step by step as
+/// each remote side-effect succeeds; this is what makes retry safe.
+model YouTubePublication {
+  id             String @id @default(cuid())
+  organizationId String
+  submissionId   String @unique
+  channelId      String?
+
+  /// Globally unique: a second row for the same video is impossible.
+  youtubeVideoId String  @unique
+  youtubeUrl     String?
+
+  videoUploadedAt    DateTime?
+  thumbnailAppliedAt DateTime?
+  playlistItemId     String?
+  playlistAddedAt    DateTime?
+  verifiedAt         DateTime?
+
+  /// Last known state reported by YouTube ("uploaded"/"processed"/"failed").
+  uploadStatus     String?
+  processingStatus String?
+  privacyStatus    String?
+  rejectionReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submission   Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  channel      YouTubeChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+}
+
+/// Durable, leased unit of work. Exactly one job per submission may be active
+/// at a time — enforced by a partial unique index added in the migration.
+model PublishingJob {
+  id             String @id @default(cuid())
+  organizationId String
+  submissionId   String
+
+  state       JobState @default(QUEUED)
+  currentStep JobStep  @default(CREATE_YOUTUBE_UPLOAD)
+
+  attempt     Int @default(0)
+  maxAttempts Int @default(6)
+
+  // --- YouTube resumable relay progress (Section 11/62) ---
+  youtubeResumableUri String? @db.Text
+  bytesSent           BigInt  @default(0)
+  totalBytes          BigInt?
+
+  // --- cooperative leasing for FOR UPDATE SKIP LOCKED workers ---
+  lockedBy       String?
+  lockedAt       DateTime?
+  leaseExpiresAt DateTime?
+
+  /// Earliest time this job may next be attempted (exponential backoff).
+  runAfter DateTime @default(now())
+
+  lastError     String? @db.Text
+  lastErrorCode String?
+  /// True when the failure is permanent (bad request, quota exhausted for the
+  /// day, revoked auth) and automatic retry would be pointless.
+  isTerminal    Boolean @default(false)
+
+  /// Secondary guard against a duplicate enqueue. The PRIMARY guard is a
+  /// partial unique index on (submissionId) WHERE state is active, added in
+  /// the migration — so two simultaneous "Publish" clicks make the second
+  /// INSERT fail in the database rather than relying on application logic.
+  idempotencyKey String @unique @default(cuid())
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submission   Submission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([state, runAfter])
+  @@index([submissionId, createdAt])
+  @@index([organizationId, state])
+}
+
+// -----------------------------------------------------------------------------
+// Review, history, notifications, audit
+// -----------------------------------------------------------------------------
+
+model Review {
+  id           String @id @default(cuid())
+  submissionId String
+  reviewerId   String
+
+  decision ReviewDecision
+  comment  String?        @db.Text
+
+  createdAt DateTime @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User       @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, createdAt])
+  @@index([reviewerId])
+}
+
+/// User-facing timeline (Section 35). Safe to show contributors — contains no
+/// IPs, diffs or internal errors. Distinct from AuditLog on purpose.
+model SubmissionEvent {
+  id           String @id @default(cuid())
+  submissionId String
+  actorId      String?
+
+  type     String
+  message  String
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  actor      User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([submissionId, createdAt])
+}
+
+/// Security/compliance trail (Section 34). Admin-only.
+model AuditLog {
+  id             String @id @default(cuid())
+  organizationId String
+  actorId        String?
+
+  action     String
+  entityType String
+  entityId   String?
+
+  oldValue Json?
+  newValue Json?
+
+  /// Denormalised external identifiers so an auditor can answer
+  /// "who published video X?" without joining four tables.
+  submissionId     String?
+  driveFileId      String?
+  youtubeVideoId   String?
+  youtubePlaylistId String?
+  publishingJobId  String?
+
+  result       String  @default("SUCCESS")
+  errorMessage String? @db.Text
+  ipAddress    String?
+  userAgent    String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, action])
+  @@index([submissionId])
+  @@index([actorId])
+}
+
+model Notification {
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+
+  type  NotificationType
+  title String
+  body  String?          @db.Text
+
+  submissionId String?
+  linkPath     String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submission   Submission?  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}

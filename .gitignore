@@ -1,0 +1,86 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------------------------------------------------------------
+# SECRETS — never commit these.
+# ---------------------------------------------------------------
+# All env files are ignored...
+.env
+.env.*
+# ...except the checked-in templates, which must contain NO real values.
+!.env.example
+!.env.test.example
+
+# Google / OAuth credential files downloaded from Google Cloud Console
+client_secret*.json
+*client_secret*.json
+credentials.json
+service-account*.json
+gcp-*.json
+*-serviceaccount.json
+
+# Private keys & certificates
+*.key
+*.p8
+*.p12
+*.pfx
+*.cer
+*.crt
+id_rsa*
+
+# Token / secret scratch files
+token.json
+tokens.json
+*.secret
+secrets.*
+.secrets/
+
+# Database dumps (may contain encrypted tokens + PII)
+*.sql.gz
+*.dump
+*.bak
+dump.sql
+backup*.sql
+
+# generated Prisma client
+/src/generated/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# local scratch
+/tmp/
+*.local
