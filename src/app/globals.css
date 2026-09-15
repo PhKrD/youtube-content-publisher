@@ -1,26 +1,164 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ==========================================================================
+   Design tokens (Section 42)
+   --------------------------------------------------------------------------
+   One accent colour, a disciplined neutral ramp, and semantic status colours.
+   Red is reserved for destructive actions and the publish confirmation, so
+   "this is irreversible" always reads the same way.
+   ========================================================================== */
+
+@theme {
+  --color-canvas: oklch(98.5% 0.002 260);
+  --color-surface: oklch(100% 0 0);
+  --color-surface-muted: oklch(97% 0.003 260);
+
+  --color-ink: oklch(21% 0.014 260);
+  --color-ink-soft: oklch(45% 0.012 260);
+  --color-ink-faint: oklch(60% 0.01 260);
+
+  --color-line: oklch(92% 0.005 260);
+  --color-line-strong: oklch(86% 0.007 260);
+
+  --color-brand-50: oklch(97% 0.015 265);
+  --color-brand-100: oklch(93% 0.035 265);
+  --color-brand-200: oklch(87% 0.06 265);
+  --color-brand-500: oklch(58% 0.18 265);
+  --color-brand-600: oklch(51% 0.19 265);
+  --color-brand-700: oklch(44% 0.17 265);
+
+  --color-success-50: oklch(96% 0.03 155);
+  --color-success-200: oklch(85% 0.09 155);
+  --color-success-600: oklch(53% 0.13 155);
+  --color-success-700: oklch(45% 0.12 155);
+
+  --color-warn-50: oklch(97% 0.04 85);
+  --color-warn-200: oklch(88% 0.11 85);
+  --color-warn-600: oklch(62% 0.14 70);
+  --color-warn-700: oklch(52% 0.13 65);
+
+  --color-danger-50: oklch(96% 0.03 25);
+  --color-danger-200: oklch(87% 0.08 25);
+  --color-danger-500: oklch(58% 0.21 25);
+  --color-danger-600: oklch(52% 0.21 25);
+  --color-danger-700: oklch(45% 0.19 25);
+
+  --color-info-50: oklch(96% 0.025 230);
+  --color-info-200: oklch(86% 0.07 230);
+  --color-info-600: oklch(55% 0.14 230);
+
+  --radius-card: 0.875rem;
+
+  --shadow-card: 0 1px 2px 0 oklch(21% 0.014 260 / 0.04), 0 1px 3px 0 oklch(21% 0.014 260 / 0.06);
+  --shadow-raised: 0 4px 6px -1px oklch(21% 0.014 260 / 0.07), 0 2px 4px -2px oklch(21% 0.014 260 / 0.05);
+  --shadow-overlay: 0 20px 25px -5px oklch(21% 0.014 260 / 0.12), 0 8px 10px -6px oklch(21% 0.014 260 / 0.08);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Tabular numerals keep byte counts and percentages from jittering as they
+     update during an upload. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Accessibility (Section 43)
+   -------------------------------------------------------------------------- */
+
+/* A visible focus ring on keyboard navigation only — never removed, only
+   scoped, so keyboard users are never left guessing where they are. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Respect the OS "reduce motion" setting rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visually hidden but available to screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Honour Windows High Contrast / forced-colors mode. */
+@media (forced-colors: active) {
+  .forced-border {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Utilities
+   -------------------------------------------------------------------------- */
+
+@utility card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* Indeterminate shimmer for loading skeletons. */
+@keyframes ycp-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 25%,
+    var(--color-line) 37%,
+    var(--color-surface-muted) 63%
+  );
+  background-size: 200% 100%;
+  animation: ycp-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Marching stripes for "work is happening but we cannot measure it". Used only
+   where progress genuinely is unknown — faking a percentage is worse. */
+@keyframes ycp-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.progress-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inline-size: 25%;
+  background-color: var(--color-brand-500);
+  animation: ycp-indeterminate 1.5s ease-in-out infinite;
 }
