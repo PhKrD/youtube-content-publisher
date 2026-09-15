@@ -215,8 +215,8 @@ async function stepRelayBytes(ctx: JobContext, deadline: number): Promise<StepRe
   const { job } = ctx;
   const video = requireVideo(ctx);
 
-  let sessionUri = job.youtubeResumableUri;
-  let totalBytes = job.totalBytes ? Number(job.totalBytes) : 0;
+  const sessionUri = job.youtubeResumableUri;
+  const totalBytes = job.totalBytes ? Number(job.totalBytes) : 0;
 
   if (!sessionUri || !totalBytes) {
     // Lost the session; go back and make a new one.

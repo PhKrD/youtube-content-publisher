@@ -112,7 +112,6 @@ export function renderTemplate(
   submitted: Record<string, unknown>,
 ): RenderResult {
   const byKey = new Map(variables.map((v) => [v.key, v]));
-  const placeholders = extractPlaceholders(body);
   const missing: RenderIssue[] = [];
   const unknownPlaceholders: string[] = [];
   const usedKeys = new Set<string>();
