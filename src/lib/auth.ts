@@ -262,6 +262,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   trustHost: true,
+  // Force redeploy to pick up new env vars
 });
 
 /** Hashes a raw invite token for lookup. Re-exported for the invite routes. */
