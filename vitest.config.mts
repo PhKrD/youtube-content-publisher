@@ -5,7 +5,9 @@ import path from "node:path";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    // import.meta.dirname rather than __dirname: this file is ESM (.mts) and
+    // Vite's native config loader does not provide CJS globals.
+    alias: { "@": path.resolve(import.meta.dirname, "./src") },
   },
   test: {
     // Most suites are pure logic and run in Node; the few component tests

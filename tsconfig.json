@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    // ES2022 rather than the scaffold's ES2017: Prisma models byte counts as
+    // BigInt, and `Error.cause` (used throughout src/lib/errors.ts) is ES2022.
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
