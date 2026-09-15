@@ -29,12 +29,18 @@ export function assertGoogleConfigured(): void {
   }
 }
 
+export function assertGooglePublishingConfigured(): void {
+  if (!env.GOOGLE_PUBLISHING_CLIENT_ID || !env.GOOGLE_PUBLISHING_CLIENT_SECRET) {
+    throw Errors.notConfigured("Google Publishing OAuth (GOOGLE_PUBLISHING_CLIENT_ID / GOOGLE_PUBLISHING_CLIENT_SECRET)");
+  }
+}
+
 /** A bare client, used for building consent URLs and exchanging codes. */
 export function createOAuthClient(redirectUri = integrationCallbackUrl()): OAuth2Client {
-  assertGoogleConfigured();
+  assertGooglePublishingConfigured();
   return new OAuth2Client({
-    clientId: env.GOOGLE_CLIENT_ID,
-    clientSecret: env.GOOGLE_CLIENT_SECRET,
+    clientId: env.GOOGLE_PUBLISHING_CLIENT_ID,
+    clientSecret: env.GOOGLE_PUBLISHING_CLIENT_SECRET,
     redirectUri,
   });
 }

@@ -44,11 +44,16 @@ const envSchema = z.object({
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters (openssl rand -base64 32)"),
   TOKEN_ENCRYPTION_KEY: base64Key32,
 
-  // --- google oauth ---
+  // --- google oauth (identity only) ---
   // Default to "" so the app boots and can render the setup wizard, which is
   // what tells the admin to go and create these.
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
+
+  // --- google oauth (publishing integration) ---
+  // Separate OAuth client with youtube.upload and drive.file scopes
+  GOOGLE_PUBLISHING_CLIENT_ID: z.string().default(""),
+  GOOGLE_PUBLISHING_CLIENT_SECRET: z.string().default(""),
 
   // --- publishing safety ---
   PUBLISHING_ENABLED: booleanish.default(false),
@@ -132,6 +137,15 @@ export function assertEnv(): { ok: true } | { ok: false; error: string } {
 export function isGoogleOAuthConfigured(): boolean {
   try {
     return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+  } catch {
+    return false;
+  }
+}
+
+/** True when Google Publishing OAuth credentials have been configured at all. */
+export function isGooglePublishingOAuthConfigured(): boolean {
+  try {
+    return Boolean(env.GOOGLE_PUBLISHING_CLIENT_ID && env.GOOGLE_PUBLISHING_CLIENT_SECRET);
   } catch {
     return false;
   }
