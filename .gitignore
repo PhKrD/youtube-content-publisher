@@ -33,9 +33,11 @@ yarn-error.log*
 # ---------------------------------------------------------------
 # SECRETS — never commit these.
 # ---------------------------------------------------------------
-# All env files are ignored...
+# All env files are ignored — the glob also catches accidental variants such
+# as a stray ".env " saved with a trailing space, which would otherwise be
+# committed with live secrets in it.
 .env
-.env.*
+.env*
 # ...except the checked-in templates, which must contain NO real values.
 !.env.example
 !.env.test.example
