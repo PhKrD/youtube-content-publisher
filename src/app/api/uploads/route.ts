@@ -4,12 +4,16 @@ import { loadSubmissionFor, requirePrincipal, requireOrganization } from "@/lib/
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
-import { createResumableUploadSession, getFolderId } from "@/lib/google/drive";
+import { createResumableUploadSession, getFolderId, uploadToDriveDirect } from "@/lib/google/drive";
 import { ACCEPTED_THUMBNAIL_MIME, ACCEPTED_VIDEO_MIME, formatBytes } from "@/lib/validation";
 import { DriveFolderKind, MediaKind, SubmissionStatus, UploadState } from "@/generated/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Vercel serverless body limit is 4.5 MB. For larger files, we'd need a different
+// approach (streaming through a dedicated upload service). For now, fail fast.
+const MAX_UPLOAD_BYTES = 4.5 * 1024 * 1024;
 
 const schema = z.object({
   submissionId: z.string().min(1),

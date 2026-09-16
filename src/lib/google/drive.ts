@@ -438,3 +438,52 @@ function safeJson(text: string): unknown {
     return { error: { message: text.slice(0, 500) } };
   }
 }
+
+/**
+ * Direct upload from server to Drive (bypasses CORS).
+ *
+ * Used when the browser cannot upload directly to Google due to CORS restrictions.
+ * The file is uploaded to our server first, then streamed to Drive.
+ */
+export async function uploadToDriveDirect(params: {
+  organizationId: string;
+  folderId: string;
+  filename: string;
+  mimeType: string;
+  file: File;
+  appProperties?: Record<string, string>;
+}): Promise<drive_v3.Schema$File> {
+  const { drive } = await client(params.organizationId);
+
+  const metadata: Record<string, unknown> = {
+    name: params.filename,
+    parents: [params.folderId],
+    ...(params.appProperties ? { appProperties: params.appProperties } : {}),
+  };
+
+  console.log(`[Drive direct upload] Starting upload: ${params.filename}, size ${params.file.size}`);
+
+  try {
+    const arrayBuffer = await params.file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const res = await drive.files.create({
+      requestBody: metadata,
+      media: {
+        mimeType: params.mimeType,
+        body: buffer,
+      },
+      fields: "id,name,size,md5Checksum,webViewLink",
+    });
+
+    if (!res.data.id) {
+      throw Errors.internal("Drive did not return a file id");
+    }
+
+    console.log(`[Drive direct upload] Upload complete: ${res.data.id}`);
+    return res.data;
+  } catch (err) {
+    console.error(`[Drive direct upload] Failed:`, err);
+    throw mapGoogleError(err, "drive");
+  }
+}
