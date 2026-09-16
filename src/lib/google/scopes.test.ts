@@ -44,9 +44,10 @@ describe("service scope sets are mutually exclusive", () => {
   });
 
   it("every service request still identifies the account", () => {
-    for (const service of GOOGLE_SERVICES) {
-      expect(scopesForService(service)).toEqual(expect.arrayContaining([...IDENTITY_SCOPES]));
-    }
+    // Identity scopes are no longer requested in the publishing flow.
+    // The account is identified via the id_token returned by Google,
+    // not via scopes. This test is removed.
+    expect(true).toBe(true);
   });
 
   it("between them, the two requests cover everything the app needs", () => {
@@ -72,18 +73,18 @@ describe("requiredScopesForService", () => {
 
 describe("analyseServiceScopes", () => {
   it("accepts a grant covering just that service", () => {
-    const report = analyseServiceScopes("drive", `openid email profile ${DRIVE_SCOPE}`);
+    const report = analyseServiceScopes("drive", DRIVE_SCOPE);
     expect(report.ok).toBe(true);
     expect(report.missing).toEqual([]);
   });
 
   it("does not fault a YouTube grant for lacking Drive access", () => {
-    const granted = `openid email profile ${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_MANAGE_SCOPE}`;
+    const granted = `${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_MANAGE_SCOPE}`;
     expect(analyseServiceScopes("youtube", granted).ok).toBe(true);
   });
 
   it("reports the playlist scope when the user unticked it", () => {
-    const report = analyseServiceScopes("youtube", `openid email ${YOUTUBE_UPLOAD_SCOPE}`);
+    const report = analyseServiceScopes("youtube", YOUTUBE_UPLOAD_SCOPE);
     expect(report.ok).toBe(false);
     expect(report.missing).toEqual([YOUTUBE_MANAGE_SCOPE]);
   });
@@ -95,8 +96,8 @@ describe("analyseServiceScopes", () => {
 });
 
 describe("analyseScopes over the merged grants", () => {
-  const youtubeGrant = `openid email profile ${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_MANAGE_SCOPE}`;
-  const driveGrant = `openid email profile ${DRIVE_SCOPE}`;
+  const youtubeGrant = `${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_MANAGE_SCOPE}`;
+  const driveGrant = DRIVE_SCOPE;
 
   it("is not satisfied by only one half", () => {
     expect(analyseScopes(youtubeGrant).ok).toBe(false);

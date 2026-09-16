@@ -48,20 +48,18 @@ export const GOOGLE_SERVICES: readonly GoogleService[] = ["youtube", "drive"] as
 
 /** Requested when connecting the YouTube half. Must contain no Drive scope. */
 export const YOUTUBE_SCOPES = [
-  ...IDENTITY_SCOPES,
   YOUTUBE_UPLOAD_SCOPE,
   YOUTUBE_MANAGE_SCOPE,
 ] as const;
 
 /** Requested when connecting the Drive half. Must contain no YouTube scope. */
-export const DRIVE_SCOPES = [...IDENTITY_SCOPES, DRIVE_SCOPE] as const;
+export const DRIVE_SCOPES = [DRIVE_SCOPE] as const;
 
 /**
  * Every scope the integration uses, across both grants. For display only —
  * never request this set in one authorization call (see the note above).
  */
 export const PUBLISHING_SCOPES = [
-  ...IDENTITY_SCOPES,
   DRIVE_SCOPE,
   YOUTUBE_UPLOAD_SCOPE,
   YOUTUBE_MANAGE_SCOPE,
