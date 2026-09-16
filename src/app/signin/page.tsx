@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertTriangle, PlayCircle, ShieldCheck } from "lucide-react";
 import { getPrincipal } from "@/lib/authz";
@@ -80,6 +81,15 @@ export default async function SignInPage({
             separately by an administrator and is never requested from you here.
           </p>
         </div>
+
+        <nav className="mt-6 flex justify-center gap-4 text-xs text-ink-faint">
+          <Link href="/privacy" className="hover:text-ink-soft">
+            Privacy
+          </Link>
+          <Link href="/terms" className="hover:text-ink-soft">
+            Terms
+          </Link>
+        </nav>
       </div>
     </main>
   );
