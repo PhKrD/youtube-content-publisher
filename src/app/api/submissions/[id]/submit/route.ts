@@ -50,7 +50,10 @@ export const POST = route(async (request, { params }: Params) => {
   const organization = await requireOrganization(principal);
   const { report } = await buildValidationReport(submission, organization, principal);
 
+  console.log(`[Submit] Validation report: readyToSubmit=${report.readyToSubmit}, errors=${JSON.stringify(report.errors)}, warnings=${JSON.stringify(report.warnings)}`);
+
   if (!report.readyToSubmit) {
+    console.error(`[Submit] Validation failed: ${report.errors[0]?.message}`);
     throw Errors.validation(
       report.errors[0]?.message ??
         "Some required information is still missing. Check the list on the page.",
