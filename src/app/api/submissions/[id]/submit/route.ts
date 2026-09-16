@@ -25,9 +25,13 @@ type Params = { params: Promise<{ id: string }> };
  * template change cannot silently alter what a reviewer approved.
  */
 export const POST = route(async (request, { params }: Params) => {
+  console.log(`[Submit] POST request received`);
   const { id } = await params;
+  console.log(`[Submit] Submission ID: ${id}`);
   const principal = await requirePrincipal();
+  console.log(`[Submit] Principal loaded: ${principal.id}`);
   const loaded = await loadSubmissionFor(principal, id);
+  console.log(`[Submit] Submission loaded: status=${loaded.status}, createdBy=${loaded.createdById}`);
 
   console.log(`[Submit] User ${principal.id} attempting to submit submission ${id}`);
   console.log(`[Submit] User role: ${principal.role}, is admin: ${principal.role === 'ADMIN'}`);
