@@ -96,6 +96,34 @@ Seeing this error means something asked for both at once. Check, in order:
    half, recreating the forbidden combination. `src/lib/google/scopes.test.ts`
    guards the scope sets themselves.
 
+### "Access blocked: … has not completed the Google verification process" when connecting
+
+```
+Error 403: access_denied
+The app is currently being tested, and can only be accessed by
+developer-approved testers.
+```
+
+The same test-user gate as on sign-in, but hit at the publishing consent. The
+list lives on the **project**, not on an individual OAuth client, so being able
+to sign in does not imply being able to connect: sign-in asks only for
+`openid email profile`, whereas the publishing grants ask for the *sensitive*
+YouTube and Drive scopes, which Google enforces strictly while the app is in
+Testing.
+
+Add the publishing Google account at
+[Google Auth Platform → Audience](https://console.cloud.google.com/auth/audience)
+(previously *OAuth consent screen*) → **Test users** → **+ ADD USERS**, then
+start the connect flow again from the app.
+
+Two caveats:
+
+- Test users cannot be removed and the list is capped at 100 for the lifetime
+  of the project, so do not add addresses speculatively.
+- A test user still sees the "unverified app" warning — click **Advanced** →
+  **Go to … (unsafe)**. Removing that warning, or going beyond the cap,
+  requires submitting the app for verification.
+
 ### Only half the connection is showing
 
 The Google connection page lists **YouTube** and **Google Drive** as two rows
