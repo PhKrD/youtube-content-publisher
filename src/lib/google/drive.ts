@@ -1,4 +1,5 @@
 import { drive_v3, google } from "googleapis";
+import { PassThrough } from "stream";
 import { db } from "../db";
 import { Errors, mapGoogleError } from "../errors";
 import { logger } from "../logger";
@@ -469,11 +470,15 @@ export async function uploadToDriveDirect(params: {
 
     console.log(`[Drive direct upload] File converted to buffer, size ${buffer.length}`);
 
+    // Create a PassThrough stream and push the buffer through it
+    const stream = new PassThrough();
+    stream.end(buffer);
+
     const res = await drive.files.create({
       requestBody: metadata,
       media: {
         mimeType: params.mimeType,
-        body: buffer,
+        body: stream,
       },
       fields: "id,name,size,md5Checksum,webViewLink",
     });
@@ -486,24 +491,6 @@ export async function uploadToDriveDirect(params: {
     return res.data;
   } catch (err) {
     console.error(`[Drive direct upload] Failed:`, err);
-    // If the error is about pipe, try using a stream instead
-    if (err instanceof Error && err.message.includes('pipe')) {
-      console.log(`[Drive direct upload] Retrying with stream`);
-      const stream = params.file.stream();
-      const res = await drive.files.create({
-        requestBody: metadata,
-        media: {
-          mimeType: params.mimeType,
-          body: stream as unknown as any,
-        },
-        fields: "id,name,size,md5Checksum,webViewLink",
-      });
-      if (!res.data.id) {
-        throw Errors.internal("Drive did not return a file id");
-      }
-      console.log(`[Drive direct upload] Upload complete with stream: ${res.data.id}`);
-      return res.data;
-    }
     throw mapGoogleError(err, "drive");
   }
 }
