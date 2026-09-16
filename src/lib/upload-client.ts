@@ -229,11 +229,15 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 
   report({ phase: "uploading", bytesSent: 0 });
 
+  console.log(`[Upload client] Starting upload to ${session.sessionUri.slice(0, 50)}..., total size ${file.size}, chunk size ${chunkSize}`);
+
   while (offset < file.size) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     const end = Math.min(offset + chunkSize, file.size);
     const blob = file.slice(offset, end);
+
+    console.log(`[Upload client] Uploading chunk: offset ${offset}, end ${end}, blob size ${blob.size}`);
 
     let attempt = 0;
     for (;;) {
@@ -285,6 +289,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
           `The upload was rejected (${res.status}): ${body.slice(0, 200)}. Please check the file and try again.`,
         );
       } catch (err) {
+        console.error(`[Drive upload] Attempt ${attempt + 1} failed at offset ${offset}:`, err instanceof Error ? err.message : String(err));
         if (signal?.aborted || (err as Error)?.name === "AbortError") throw err;
 
         const transient =

@@ -39,6 +39,8 @@ export const POST = route(async (request) => {
   const principal = await requirePrincipal();
   const body = await parseJson(request, schema);
 
+  console.log(`[Upload session] Creating session for submission ${body.submissionId}, kind ${body.kind}, file ${body.filename}, size ${body.sizeBytes}`);
+
   const submission = await loadSubmissionFor(principal, body.submissionId, { forEdit: true });
   const org = await requireOrganization(principal);
   const kind = body.kind as MediaKind;
@@ -100,6 +102,8 @@ export const POST = route(async (request) => {
     kind === MediaKind.VIDEO ? DriveFolderKind.DRAFTS : DriveFolderKind.THUMBNAILS,
   );
 
+  console.log(`[Upload session] Folder ID: ${folderId}`);
+
   const session = await createResumableUploadSession({
     organizationId: principal.organizationId,
     folderId,
@@ -114,6 +118,8 @@ export const POST = route(async (request) => {
       uploadedBy: principal.id,
     },
   });
+
+  console.log(`[Upload session] Session created: sessionUri prefix ${session.sessionUri.slice(0, 50)}..., expires ${session.expiresAt.toISOString()}`);
 
   const media = await db.mediaFile.create({
     data: {

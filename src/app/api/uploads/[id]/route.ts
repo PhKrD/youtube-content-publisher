@@ -107,6 +107,8 @@ export const POST = route(async (request, { params }: Params) => {
   const { principal, media } = await loadMedia(id);
   const body = await parseJson(request, completeSchema);
 
+  console.log(`[Upload complete] Finalising upload ${id}, driveFileId ${body.driveFileId}`);
+
   const info = await getFileInfo(principal.organizationId, body.driveFileId);
 
   if (info.sizeBytes !== Number(media.sizeBytes)) {
