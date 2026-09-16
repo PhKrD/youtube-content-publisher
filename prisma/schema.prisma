@@ -239,6 +239,12 @@ model User {
   disabledAt  DateTime?
   lastLoginAt DateTime?
 
+  /// YouTube Developer Policy III.A.2 requires users to agree to the privacy
+  /// policy before they can use the app's features. The version is recorded so
+  /// that a material change to the policy re-prompts everyone.
+  policyAcceptedAt      DateTime?
+  policyAcceptedVersion String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

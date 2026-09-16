@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getPrincipal } from "@/lib/authz";
 import { getUnreadCount } from "@/lib/notifications";
+import { CONSENT_PATH, hasAcceptedCurrentPolicy } from "@/lib/policy-consent";
 import { AppShell } from "@/components/layout/app-shell";
 import { Role, SubmissionStatus } from "@/generated/prisma";
 
@@ -17,6 +18,14 @@ import { Role, SubmissionStatus } from "@/generated/prisma";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const principal = await getPrincipal();
   if (!principal) redirect("/signin");
+
+  // YouTube Developer Policy III.A.2: no access to features before the user has
+  // agreed to the privacy policy. Enforced here so no page can forget it.
+  const consent = await db.user.findUnique({
+    where: { id: principal.id },
+    select: { policyAcceptedAt: true, policyAcceptedVersion: true },
+  });
+  if (!consent || !hasAcceptedCurrentPolicy(consent)) redirect(CONSENT_PATH);
 
   const canReview = principal.role === Role.ADMIN || principal.role === Role.REVIEWER;
 

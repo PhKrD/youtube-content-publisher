@@ -268,6 +268,47 @@ export function AppShell({
       <main id="main" className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         {children}
       </main>
+
+      {/*
+        YouTube Developer Policy III.A.1 requires a visible link to YouTube's
+        Terms of Service, and III.A.2.a requires the privacy policy to be
+        accessible at all times — hence in the shell, not on one page.
+      */}
+      <footer className="mx-auto max-w-7xl px-4 pb-8 sm:px-6">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-line pt-6 text-xs text-ink-faint">
+          <span>This app uses YouTube API Services.</span>
+          <Link href="/privacy" className="hover:text-ink-soft">
+            Privacy Policy
+          </Link>
+          <Link href="/terms" className="hover:text-ink-soft">
+            Terms of Service
+          </Link>
+          <a
+            href="https://www.youtube.com/t/terms"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-ink-soft"
+          >
+            YouTube Terms of Service
+          </a>
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-ink-soft"
+          >
+            Google Privacy Policy
+          </a>
+          <a
+            href="https://security.google.com/settings/security/permissions"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-ink-soft"
+          >
+            Manage Google access
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }

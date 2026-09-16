@@ -17,6 +17,29 @@ export default function PrivacyPolicyPage() {
           information.
         </p>
 
+        <p className="rounded-lg bg-surface-muted px-3.5 py-3">
+          This application <strong className="font-medium text-ink">uses YouTube API
+          Services</strong>. By using it you also agree to the{" "}
+          <a
+            className="underline"
+            href="https://www.youtube.com/t/terms"
+            target="_blank"
+            rel="noreferrer"
+          >
+            YouTube Terms of Service
+          </a>{" "}
+          and to the{" "}
+          <a
+            className="underline"
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Google Privacy Policy
+          </a>
+          .
+        </p>
+
         <section>
           <h2 className="text-sm font-semibold text-ink">Who runs this app</h2>
           <p className="mt-2">
@@ -95,19 +118,47 @@ export default function PrivacyPolicyPage() {
 
         <section>
           <h2 className="text-sm font-semibold text-ink">
+            Cookies and storage on your device
+          </h2>
+          <p className="mt-2">
+            This app sets a session cookie in your browser when you sign in. It exists
+            only to keep you signed in and to protect sign-in requests from forgery. It
+            is not used for tracking or advertising. Blocking it will prevent you from
+            signing in. No third party places or reads cookies through this app.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-sm font-semibold text-ink">
+            No advertising or third-party content
+          </h2>
+          <p className="mt-2">
+            This app does not display advertising and does not allow any third party to
+            serve content or advertisements inside it.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-sm font-semibold text-ink">
             How long it is kept, and how to remove it
           </h2>
           <p className="mt-2">
             Content and audit records are kept until an administrator deletes them, so
-            that the publishing history stays accountable. You can revoke this
-            app&rsquo;s access to your Google account at any time from{" "}
+            that the publishing history stays accountable. Data is not kept
+            indefinitely without purpose: when an account is removed, its personal
+            details are deleted.
+          </p>
+          <p className="mt-3">
+            Separately from this app&rsquo;s own deletion process, you can revoke this
+            app&rsquo;s access to your Google data at any time through the Google
+            security settings page at{" "}
             <a
               className="underline"
-              href="https://myaccount.google.com/permissions"
+              href="https://security.google.com/settings/security/permissions"
               target="_blank"
               rel="noreferrer"
             >
-              your Google account permissions
+              security.google.com/settings/security/permissions
             </a>
             , which immediately stops it acting on your behalf. To have your account and
             personal data deleted from this app, email the address above and it will be
@@ -130,6 +181,21 @@ export default function PrivacyPolicyPage() {
               Google Privacy Policy
             </a>
             .
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-sm font-semibold text-ink">
+            Questions or complaints
+          </h2>
+          <p className="mt-2">
+            If you have questions or complaints about this app&rsquo;s privacy
+            practices, or about how it handles data obtained through the YouTube API
+            Services, contact the developer at{" "}
+            <a className="underline" href="mailto:palanharkrsnadas@gmail.com">
+              palanharkrsnadas@gmail.com
+            </a>
+            . You will get a reply.
           </p>
         </section>
 
