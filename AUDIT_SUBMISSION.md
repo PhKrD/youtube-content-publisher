@@ -125,15 +125,16 @@ once the audit closes.
 
 They ask for screenshots of how the client uses the API. Capture:
 
-1. Sign-in page, showing the privacy policy and terms links.
-2. The consent gate at `/accept-terms`.
-3. The Google consent screen for the YouTube grant, showing the scopes.
-4. **/admin/integrations**, showing the two connected grants.
-5. A submission awaiting review.
-6. The approve-and-publish dialogue, showing a human makes the decision.
-7. A published video with its YouTube link.
-8. **/admin/audit**, showing the audit trail.
-9. The app footer, showing the YouTube Terms of Service link.
+1. **Home page** (`/`) — shows the app's purpose, who operates it, and links to the legal policies.
+2. Sign-in page, showing the privacy policy and terms links.
+3. The consent gate at `/accept-terms`.
+4. The Google consent screen for the YouTube grant, showing the scopes.
+5. **/admin/integrations**, showing the two connected grants.
+6. A submission awaiting review.
+7. The approve-and-publish dialogue, showing a human makes the decision.
+8. A published video with its YouTube link.
+9. **/admin/audit**, showing the audit trail.
+10. The app footer, showing the YouTube Terms of Service link.
 
 Number 6 matters most. The reviewer is looking for a human authorising each
 publish rather than automated bulk upload.
