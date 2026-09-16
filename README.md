@@ -1,4 +1,4 @@
-# YouTube Content Publisher
+# Channel Publisher
 
 A web application for preparing, reviewing and publishing video content to
 YouTube, with Google Drive as the media store.

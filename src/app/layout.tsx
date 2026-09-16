@@ -11,11 +11,13 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "YouTube Content Publisher",
-    template: "%s · YouTube Content Publisher",
+    default: "Channel Publisher",
+    template: "%s · Channel Publisher",
   },
+  // Says what it works with without putting "YouTube" in the name, which the
+  // YouTube API Services Branding Guidelines forbid.
   description:
-    "Prepare, review and publish video content to YouTube, with Google Drive as the media store.",
+    "Prepare, review and publish video content to your own channel, with Google Drive as the media store. Works with YouTube.",
   robots: { index: false, follow: false },
 };
 

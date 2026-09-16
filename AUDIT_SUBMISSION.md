@@ -35,7 +35,7 @@ Use the same email as the Google Cloud project owner. A mismatch stalls review.
 
 | Field | Answer |
 |---|---|
-| Name | *the new app name — see Blockers* |
+| Name | `Channel Publisher` |
 | Type | Web application |
 | URL | `https://youtube-content-publisher.vercel.app` |
 | Publicly available? | No — access is by invitation only |
@@ -161,21 +161,28 @@ publish rather than automated bulk upload.
 
 ## Blockers — fix before submitting
 
-### 1. The app name breaks the Branding Guidelines
+### 1. Set the consent screen app name to "Channel Publisher"
+
+The app has been renamed in code, because the Branding Guidelines are absolute:
 
 > You must never use "YouTube", "YT", "You-Tube", or any derivative in your
 > app's name.
 > — [YouTube API Services Branding Guidelines](https://developers.google.com/youtube/terms/branding-guidelines)
 
-"YouTube Content Publisher" cannot be the name. Rename it, and use the new name
-consistently in the OAuth consent screen, this form and the app UI. You may
-still say it "works with YouTube" in prose.
+The remaining step is outside the codebase: set **App name** to
+`Channel Publisher` on the
+[Branding page](https://console.cloud.google.com/auth/branding). It must match
+this form and the app UI. Saying it "works with YouTube" in prose is fine.
 
 ### 2. The consent screen must be complete and consistent
 
-The name, support email, home page, privacy policy and terms on the
-[Branding page](https://console.cloud.google.com/auth/branding) must match what
-you put in this form.
+The support email, home page, privacy policy and terms on the Branding page
+must match what you put in this form:
+
+| Field | Value |
+|---|---|
+| Privacy policy | `https://youtube-content-publisher.vercel.app/privacy` |
+| Terms of service | `https://youtube-content-publisher.vercel.app/terms` |
 
 ### 3. Consider a custom domain
 

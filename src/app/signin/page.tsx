@@ -42,7 +42,7 @@ export default async function SignInPage({
             <PlayCircle className="size-7 text-white" aria-hidden="true" />
           </div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">
-            YouTube Content Publisher
+            Channel Publisher
           </h1>
           <p className="mt-1.5 text-sm text-ink-soft">
             Sign in to prepare and publish content.

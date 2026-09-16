@@ -36,7 +36,7 @@ free.
 
 1. Go to <https://console.cloud.google.com/projectcreate>
 2. Sign in with the Google account that owns your YouTube channel.
-3. **Project name**: `YouTube Content Publisher`
+3. **Project name**: `Channel Publisher`
 4. Leave *Location* as **No organisation** unless your workplace requires otherwise.
 5. Click **CREATE**.
 6. Wait for the notification, then make sure the new project is selected in the
@@ -69,7 +69,7 @@ This is the permission screen your users will see.
    - Otherwise choose **External**.
 3. Click **CREATE**.
 4. Fill in:
-   - **App name**: `YouTube Content Publisher` (users will see this)
+   - **App name**: `Channel Publisher` (users will see this)
    - **User support email**: your email
    - **Developer contact information**: your email
 5. Click **SAVE AND CONTINUE**.
@@ -84,7 +84,7 @@ This is the permission screen your users will see.
 ### About the "unverified app" warning (External only)
 
 Until Google verifies your app, users see a warning screen. To proceed:
-click **Advanced** → **Go to YouTube Content Publisher (unsafe)**.
+click **Advanced** → **Go to Channel Publisher (unsafe)**.
 
 This is expected and safe — it is *your* app, on *your* Google Cloud project.
 The warning simply means Google has not reviewed it.
@@ -114,7 +114,7 @@ sign-in secret grants no access to your channel or your files.
 1. Go to <https://console.cloud.google.com/apis/credentials>
 2. Click **+ CREATE CREDENTIALS** → **OAuth client ID**.
 3. **Application type**: **Web application**.
-4. **Name**: `YouTube Content Publisher — Sign-in`
+4. **Name**: `Channel Publisher — Sign-in`
 5. Under **Authorised redirect URIs**, add exactly:
    ```
    http://localhost:3000/api/auth/callback/google
@@ -126,7 +126,7 @@ sign-in secret grants no access to your channel or your files.
 
 1. **+ CREATE CREDENTIALS** → **OAuth client ID** again.
 2. **Application type**: **Web application**.
-3. **Name**: `YouTube Content Publisher — Publishing`
+3. **Name**: `Channel Publisher — Publishing`
 4. Under **Authorised redirect URIs**, add exactly:
    ```
    http://localhost:3000/api/integrations/google/callback

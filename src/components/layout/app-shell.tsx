@@ -109,7 +109,7 @@ export function AppShell({
               <PlayCircle className="size-4.5 text-white" aria-hidden="true" />
             </span>
             <span className="hidden text-sm font-semibold text-ink sm:inline">
-              Content Publisher
+              Channel Publisher
             </span>
           </Link>
 

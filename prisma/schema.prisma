@@ -1,5 +1,5 @@
 // =============================================================================
-// YouTube Content Publisher — data model
+// Channel Publisher — data model
 // =============================================================================
 // Design notes:
 //  * Every tenant-scoped row carries `organizationId` so the app can grow into
