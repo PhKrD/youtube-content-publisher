@@ -62,6 +62,7 @@ export const POST = route(async (request) => {
   console.log(`[Direct upload] File details: name=${file.name}, type=${file.type}, size=${file.size}`);
 
   if (sizeBytes > MAX_UPLOAD_BYTES) {
+    console.error(`[Direct upload] File too large: ${sizeBytes} > ${MAX_UPLOAD_BYTES}`);
     throw Errors.payloadTooLarge(
       `That file is ${formatBytes(sizeBytes)}, over the ${formatBytes(MAX_UPLOAD_BYTES)} serverless limit. For larger files, contact support.`,
     );
@@ -79,7 +80,11 @@ export const POST = route(async (request) => {
     durationSeconds,
   };
 
+  console.log(`[Direct upload] Parsed body:`, body);
+
   const parsed = schema.parse(body);
+
+  console.log(`[Direct upload] Schema validation passed`);
 
   const submission = await loadSubmissionFor(principal, parsed.submissionId, { forEdit: true });
   const org = await requireOrganization(principal);
@@ -144,6 +149,8 @@ export const POST = route(async (request) => {
   let driveFile: any;
 
   try {
+    console.log(`[Direct upload] About to call uploadToDriveDirect`);
+
     // Upload to Drive directly from the server
     driveFile = await uploadToDriveDirect({
       organizationId: principal.organizationId,
@@ -183,6 +190,8 @@ export const POST = route(async (request) => {
         uploadedById: principal.id,
       },
     });
+
+    console.log(`[Direct upload] Database record created: ${media.id}`);
 
     if (submission.status === SubmissionStatus.DRAFT) {
       await db.submission.update({

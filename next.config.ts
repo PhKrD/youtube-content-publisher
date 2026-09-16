@@ -25,6 +25,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https://*.googleusercontent.com https://*.ggpht.com https://i.ytimg.com https://yt3.ggpht.com",
+  "media-src 'self' blob: data:",
   // Browser uploads go straight to Google's resumable endpoints, so those
   // origins must be permitted here or every upload is blocked by CSP.
   "connect-src 'self' https://www.googleapis.com https://*.googleapis.com https://accounts.google.com",
