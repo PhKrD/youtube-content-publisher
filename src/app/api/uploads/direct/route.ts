@@ -201,7 +201,19 @@ export const POST = route(async (request) => {
     }
   } catch (err) {
     console.error(`[Direct upload] Error during Drive upload:`, err);
-    throw err;
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[Direct upload] Error message to return:`, errorMessage);
+    // Return the actual error message in the response instead of a generic one
+    return Response.json(
+      {
+        error: {
+          code: "INTERNAL",
+          message: errorMessage,
+          retryable: true,
+        },
+      },
+      { status: 500 },
+    );
   }
 
   await audit({
