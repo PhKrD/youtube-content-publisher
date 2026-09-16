@@ -140,9 +140,12 @@ export const POST = route(async (request) => {
 
   console.log(`[Direct upload] Folder ID: ${folderId}`);
 
+  let media: any;
+  let driveFile: any;
+
   try {
     // Upload to Drive directly from the server
-    const driveFile = await uploadToDriveDirect({
+    driveFile = await uploadToDriveDirect({
       organizationId: principal.organizationId,
       folderId,
       filename: `${submission.reference}-${kindTyped.toLowerCase()}-${parsed.filename}`,
@@ -158,7 +161,7 @@ export const POST = route(async (request) => {
 
     console.log(`[Direct upload] Drive upload complete: file ID ${driveFile.id}`);
 
-    const media = await db.mediaFile.create({
+    media = await db.mediaFile.create({
       data: {
         organizationId: principal.organizationId,
         submissionId: submission.id,
