@@ -467,6 +467,8 @@ export async function uploadToDriveDirect(params: {
     const arrayBuffer = await params.file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    console.log(`[Drive direct upload] File converted to buffer, size ${buffer.length}`);
+
     const res = await drive.files.create({
       requestBody: metadata,
       media: {

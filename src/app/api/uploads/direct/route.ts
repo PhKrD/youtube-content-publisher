@@ -52,11 +52,14 @@ export const POST = route(async (request) => {
   const durationSeconds = formData.get("durationSeconds") ? Number(formData.get("durationSeconds")) : undefined;
   const file = formData.get("file") as File | null;
 
-  console.log(`[Direct upload] Received: submission ${submissionId}, kind ${kind}, file ${filename}, size ${sizeBytes}, has file: ${file !== null}`);
+  console.log(`[Direct upload] Received: submission ${submissionId}, kind ${kind}, file ${filename}, size ${sizeBytes}, has file: ${file !== null}, file size: ${file?.size}`);
 
   if (!file) {
+    console.error(`[Direct upload] No file provided`);
     throw Errors.validation("No file provided");
   }
+
+  console.log(`[Direct upload] File details: name=${file.name}, type=${file.type}, size=${file.size}`);
 
   if (sizeBytes > MAX_UPLOAD_BYTES) {
     throw Errors.payloadTooLarge(
@@ -135,53 +138,58 @@ export const POST = route(async (request) => {
     kindTyped === MediaKind.VIDEO ? DriveFolderKind.DRAFTS : DriveFolderKind.THUMBNAILS,
   );
 
-  console.log(`[Direct upload] Uploading to Drive folder ${folderId}`);
+  console.log(`[Direct upload] Folder ID: ${folderId}`);
 
-  // Upload to Drive directly from the server
-  const driveFile = await uploadToDriveDirect({
-    organizationId: principal.organizationId,
-    folderId,
-    filename: `${submission.reference}-${kindTyped.toLowerCase()}-${parsed.filename}`,
-    mimeType: parsed.mimeType,
-    file: file,
-    appProperties: {
-      submissionId: submission.id,
-      submissionRef: submission.reference,
-      kind: kindTyped,
-      uploadedBy: principal.id,
-    },
-  });
-
-  console.log(`[Direct upload] Drive upload complete: file ID ${driveFile.id}`);
-
-  const media = await db.mediaFile.create({
-    data: {
+  try {
+    // Upload to Drive directly from the server
+    const driveFile = await uploadToDriveDirect({
       organizationId: principal.organizationId,
-      submissionId: submission.id,
-      kind: kindTyped,
-      originalFilename: parsed.filename,
+      folderId,
+      filename: `${submission.reference}-${kindTyped.toLowerCase()}-${parsed.filename}`,
       mimeType: parsed.mimeType,
-      sizeBytes: BigInt(parsed.sizeBytes),
-      checksumSha256: parsed.checksumSha256 ?? null,
-      width: parsed.width ?? null,
-      height: parsed.height ?? null,
-      durationSeconds: parsed.durationSeconds ?? null,
-      driveFolderId: folderId,
-      driveFileId: driveFile.id,
-      driveMd5: driveFile.md5Checksum ?? null,
-      driveWebViewLink: driveFile.webViewLink ?? null,
-      uploadState: UploadState.COMPLETED,
-      bytesReceived: BigInt(parsed.sizeBytes),
-      completedAt: new Date(),
-      uploadedById: principal.id,
-    },
-  });
-
-  if (submission.status === SubmissionStatus.DRAFT) {
-    await db.submission.update({
-      where: { id: submission.id },
-      data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
+      file: file,
+      appProperties: {
+        submissionId: submission.id,
+        submissionRef: submission.reference,
+        kind: kindTyped,
+        uploadedBy: principal.id,
+      },
     });
+
+    console.log(`[Direct upload] Drive upload complete: file ID ${driveFile.id}`);
+
+    const media = await db.mediaFile.create({
+      data: {
+        organizationId: principal.organizationId,
+        submissionId: submission.id,
+        kind: kindTyped,
+        originalFilename: parsed.filename,
+        mimeType: parsed.mimeType,
+        sizeBytes: BigInt(parsed.sizeBytes),
+        checksumSha256: parsed.checksumSha256 ?? null,
+        width: parsed.width ?? null,
+        height: parsed.height ?? null,
+        durationSeconds: parsed.durationSeconds ?? null,
+        driveFolderId: folderId,
+        driveFileId: driveFile.id,
+        driveMd5: driveFile.md5Checksum ?? null,
+        driveWebViewLink: driveFile.webViewLink ?? null,
+        uploadState: UploadState.COMPLETED,
+        bytesReceived: BigInt(parsed.sizeBytes),
+        completedAt: new Date(),
+        uploadedById: principal.id,
+      },
+    });
+
+    if (submission.status === SubmissionStatus.DRAFT) {
+      await db.submission.update({
+        where: { id: submission.id },
+        data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
+      });
+    }
+  } catch (err) {
+    console.error(`[Direct upload] Error during Drive upload:`, err);
+    throw err;
   }
 
   await audit({
