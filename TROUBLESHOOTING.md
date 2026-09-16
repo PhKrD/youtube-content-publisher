@@ -268,6 +268,26 @@ Working as designed. Open the submission and click **Retry the remaining
 steps** — it retries only the playlist. It cannot upload a second video,
 because the recorded video ID makes the upload step skip itself.
 
+### The video published fine but YouTube locked it as private
+
+Not a bug in this app, and not something the app can work around.
+
+Every video inserted through the YouTube Data API by a project created after
+28 July 2020 that has **not passed a YouTube API Services audit** is forced to
+private viewing, whatever privacy the submission asked for. You cannot make it
+public afterwards and **there is no appeal**: the only ways to get a public
+video are to re-upload it by hand through the YouTube app or site, or to pass
+the audit and upload it again.
+
+So until the audit is approved, treat this deployment as usable for the review
+workflow and for private uploads only — do not run content through it that
+needs to be public.
+
+Apply with the
+[YouTube API Services audit form](https://support.google.com/youtube/contact/yt_api_form).
+Note this is a **separate** process from OAuth verification and from a quota
+increase; passing one does not grant the others.
+
 ### Thumbnail rejected with a 403
 
 Custom thumbnails require a **verified** YouTube channel. Verify at
