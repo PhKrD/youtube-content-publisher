@@ -29,7 +29,13 @@ export const POST = route(async (request, { params }: Params) => {
   const principal = await requirePrincipal();
   const loaded = await loadSubmissionFor(principal, id);
 
+  console.log(`[Submit] User ${principal.id} attempting to submit submission ${id}`);
+  console.log(`[Submit] User role: ${principal.role}, is admin: ${principal.role === 'ADMIN'}`);
+  console.log(`[Submit] Submission status: ${loaded.status}, created by: ${loaded.createdById}`);
+  console.log(`[Submit] User is creator: ${principal.id === loaded.createdById}`);
+
   if (!canSubmitForReview(principal, loaded)) {
+    console.error(`[Submit] canSubmitForReview returned false`);
     throw Errors.forbidden(`cannot submit a submission in status ${loaded.status}`);
   }
 
