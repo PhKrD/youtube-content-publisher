@@ -273,11 +273,16 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 
         // 5xx / 429: transient. Retry the same chunk.
         if (res.status >= 500 || res.status === 429) {
+          const body = await res.text().catch(() => "");
+          console.error(`[Drive upload] Google ${res.status} at offset ${offset}:`, body.slice(0, 500));
           throw Object.assign(new Error(`Google returned ${res.status}`), { transient: true });
         }
 
+        // 4xx other than 404/410: permanent. Show the actual error.
+        const body = await res.text().catch(() => "");
+        console.error(`[Drive upload] Permanent error ${res.status} at offset ${offset}:`, body.slice(0, 500));
         throw new Error(
-          `The upload was rejected (${res.status}). Please check the file and try again.`,
+          `The upload was rejected (${res.status}): ${body.slice(0, 200)}. Please check the file and try again.`,
         );
       } catch (err) {
         if (signal?.aborted || (err as Error)?.name === "AbortError") throw err;

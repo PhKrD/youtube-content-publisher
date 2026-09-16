@@ -36,6 +36,7 @@ async function client(organizationId: string): Promise<{
   accessToken: string;
 }> {
   const { client: auth, accessToken } = await getAuthorizedClient(organizationId, "drive");
+  console.log(`[Drive client] Using access token (first 20 chars): ${accessToken.slice(0, 20)}...`);
   return { drive: google.drive({ version: "v3", auth }), accessToken };
 }
 
@@ -227,6 +228,7 @@ export async function createResumableUploadSession(params: {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    console.error(`[Drive session creation] Google ${res.status}:`, body.slice(0, 500));
     throw mapGoogleError(
       { response: { status: res.status, data: safeJson(body) }, message: body.slice(0, 500) },
       "drive",

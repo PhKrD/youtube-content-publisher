@@ -253,7 +253,12 @@ export async function getAuthorizedClient(
   assertGooglePublishingConfigured();
 
   const integration = await getServiceIntegration(organizationId, service);
-  if (!integration) throw Errors.googleNotConnected();
+  if (!integration) {
+    console.error(`[Google client] No ${service} integration found for org ${organizationId}`);
+    throw Errors.googleNotConnected();
+  }
+
+  console.log(`[Google client] ${service} integration status: ${integration.status}, scopes: ${integration.scopes}`);
 
   if (integration.status === IntegrationStatus.REVOKED) {
     throw Errors.googleReauthRequired(
@@ -265,6 +270,7 @@ export async function getAuthorizedClient(
   // here would make every Drive call fail whenever the YouTube half happened
   // to be missing, and vice versa.
   const scopeReport = analyseServiceScopes(service, integration.scopes);
+  console.log(`[Google client] ${service} scope report:`, scopeReport);
   if (!scopeReport.ok) {
     throw Errors.insufficientScope(
       `${SERVICE_LABELS[service]} grant is missing scopes: ${scopeReport.missing.join(", ")}`,
