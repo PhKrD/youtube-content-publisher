@@ -14,6 +14,9 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
           {children}
         </article>
         <nav className="mt-6 flex justify-center gap-4 text-xs text-ink-faint">
+          <Link href="/" className="hover:text-ink-soft">
+            Home
+          </Link>
           <Link href="/privacy" className="hover:text-ink-soft">
             Privacy
           </Link>
