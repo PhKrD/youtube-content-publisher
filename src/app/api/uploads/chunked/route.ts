@@ -135,6 +135,7 @@ async function handleChunkUpload(principal: any, body: any) {
   const parsed = uploadChunkSchema.parse(body);
   
   console.log(`[Chunked upload] Chunk ${parsed.chunkIndex + 1}/${parsed.totalChunks} for media file ${parsed.mediaFileId}`);
+  console.log(`[Chunked upload] Chunk data length: ${parsed.chunkData?.length || 0}`);
 
   const mediaFile = await db.mediaFile.findUnique({
     where: { id: parsed.mediaFileId },
@@ -153,7 +154,7 @@ async function handleChunkUpload(principal: any, body: any) {
   try {
     // Decode base64 chunk
     const chunkBuffer = Buffer.from(parsed.chunkData, "base64");
-    console.log(`[Chunked upload] Chunk size: ${chunkBuffer.length} bytes`);
+    console.log(`[Chunked upload] Chunk decoded, size: ${chunkBuffer.length} bytes`);
   } catch (err) {
     console.error(`[Chunked upload] Failed to decode base64 chunk:`, err);
     throw Errors.validation("Invalid base64 chunk data");
@@ -166,7 +167,7 @@ async function handleChunkUpload(principal: any, body: any) {
   const offset = parsed.chunkIndex * CHUNK_SIZE;
   const end = Math.min(offset + chunkBuffer.length, Number(mediaFile.sizeBytes));
 
-  console.log(`[Chunked upload] Uploading chunk to Drive: offset ${offset}, end ${end}`);
+  console.log(`[Chunked upload] Uploading chunk to Drive: offset ${offset}, end ${end}, total size ${mediaFile.sizeBytes}`);
 
   try {
     // Upload chunk to Google Drive using the session URI

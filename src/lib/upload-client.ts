@@ -154,16 +154,16 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 
   report({ phase: "creating", bytesSent: 0 });
 
-  // Use direct upload for files < 4 MB (Vercel limit is 4.5 MB)
-  // Use chunked upload for larger files
-  const USE_DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024; // 4 MB
+  // Use direct upload for files < 10 MB (increased from 4 MB to handle larger files)
+  // Use chunked upload for very large files
+  const USE_DIRECT_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10 MB
   
   if (file.size < USE_DIRECT_UPLOAD_THRESHOLD) {
-    console.log(`[Upload client] File is small (${file.size} bytes), using direct upload`);
+    console.log(`[Upload client] File is within direct upload limit (${file.size} bytes), using direct upload`);
     return uploadDirect(file, submissionId, kind, checksum, dimensions, duration, meter, report, signal);
   }
 
-  console.log(`[Upload client] File is large (${file.size} bytes), using chunked upload`);
+  console.log(`[Upload client] File is very large (${file.size} bytes), using chunked upload`);
   return uploadChunked(file, submissionId, kind, checksum, dimensions, duration, meter, report, signal);
 }
 
