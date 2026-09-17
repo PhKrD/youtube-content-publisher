@@ -25,35 +25,59 @@ type Params = { params: Promise<{ id: string }> };
  * template change cannot silently alter what a reviewer approved.
  */
 export const POST = route(async (request, { params }: Params) => {
-  console.log(`[Submit] POST request received`);
+  console.log(`[SUBMIT DEBUG] ========== SUBMIT REQUEST START ==========`);
   const { id } = await params;
-  console.log(`[Submit] Submission ID: ${id}`);
+  console.log(`[SUBMIT DEBUG] submissionId=${id}`);
+  
   const principal = await requirePrincipal();
-  console.log(`[Submit] Principal loaded: ${principal.id}`);
+  console.log(`[SUBMIT DEBUG] currentUserId=${principal.id}`);
+  console.log(`[SUBMIT DEBUG] currentUserRole=${principal.role}`);
+  console.log(`[SUBMIT DEBUG] currentUserOrganizationId=${principal.organizationId}`);
+  console.log(`[SUBMIT DEBUG] currentUserEmail=${principal.email}`);
+  
   const loaded = await loadSubmissionFor(principal, id);
-  console.log(`[Submit] Submission loaded: status=${loaded.status}, createdBy=${loaded.createdById}`);
-
-  console.log(`[Submit] User ${principal.id} attempting to submit submission ${id}`);
-  console.log(`[Submit] User role: ${principal.role}, is admin: ${principal.role === 'ADMIN'}`);
-  console.log(`[Submit] Submission status: ${loaded.status}, created by: ${loaded.createdById}`);
-  console.log(`[Submit] User is creator: ${principal.id === loaded.createdById}`);
-
+  console.log(`[SUBMIT DEBUG] submissionCreatorId=${loaded.createdById}`);
+  console.log(`[SUBMIT DEBUG] submissionOrganizationId=${loaded.organizationId}`);
+  console.log(`[SUBMIT DEBUG] submissionStatus=${loaded.status}`);
+  console.log(`[SUBMIT DEBUG] isCreator=${principal.id === loaded.createdById}`);
+  console.log(`[SUBMIT DEBUG] isAdmin=${principal.role === 'ADMIN'}`);
+  console.log(`[SUBMIT DEBUG] organizationMatch=${principal.organizationId === loaded.organizationId}`);
+  
+  const canEdit = principal.role === 'ADMIN' || (principal.id === loaded.createdById && loaded.organizationId === principal.organizationId);
+  console.log(`[SUBMIT DEBUG] canEdit=${canEdit}`);
+  
+  const statusAllowed = loaded.status === SubmissionStatus.READY || 
+                        loaded.status === SubmissionStatus.DRAFT || 
+                        loaded.status === SubmissionStatus.UPLOADED_TO_DRIVE || 
+                        loaded.status === SubmissionStatus.CHANGES_REQUESTED;
+  console.log(`[SUBMIT DEBUG] statusAllowed=${statusAllowed}`);
+  
   if (!canSubmitForReview(principal, loaded)) {
-    console.error(`[Submit] canSubmitForReview returned false`);
-    throw Errors.forbidden(`cannot submit a submission in status ${loaded.status}`);
+    console.error(`[SUBMIT DEBUG] canSubmitForReview returned false`);
+    console.error(`[SUBMIT DEBUG] 403 REASON: canSubmitForReview check failed`);
+    throw Errors.forbidden(`cannot submit a submission in status ${loaded.status} (user: ${principal.role}, creator: ${loaded.createdById})`);
   }
 
   const submission = await db.submission.findUniqueOrThrow({
     where: { id },
     include: submissionInclude,
   });
+  
+  console.log(`[SUBMIT DEBUG] hasTitle=${!!submission.computedTitle}`);
+  console.log(`[SUBMIT DEBUG] hasDescription=${!!submission.computedDescription}`);
+  console.log(`[SUBMIT DEBUG] mediaFiles=${submission.mediaFiles.length}`);
+  console.log(`[SUBMIT DEBUG] mediaFiles:`, submission.mediaFiles.map(m => ({ id: m.id, kind: m.kind, uploadState: m.uploadState, driveFileId: m.driveFileId })));
+  
   const organization = await requireOrganization(principal);
   const { report } = await buildValidationReport(submission, organization, principal);
 
-  console.log(`[Submit] Validation report: readyToSubmit=${report.readyToSubmit}, errors=${JSON.stringify(report.errors)}, warnings=${JSON.stringify(report.warnings)}`);
+  console.log(`[SUBMIT DEBUG] Validation report: readyToSubmit=${report.readyToSubmit}`);
+  console.log(`[SUBMIT DEBUG] Validation errors:`, report.errors);
+  console.log(`[SUBMIT DEBUG] Validation warnings:`, report.warnings);
 
   if (!report.readyToSubmit) {
-    console.error(`[Submit] Validation failed: ${report.errors[0]?.message}`);
+    console.error(`[SUBMIT DEBUG] Validation failed: ${report.errors[0]?.message}`);
+    console.error(`[SUBMIT DEBUG] 403 REASON: Validation failed - ${report.errors[0]?.message}`);
     throw Errors.validation(
       report.errors[0]?.message ??
         "Some required information is still missing. Check the list on the page.",
