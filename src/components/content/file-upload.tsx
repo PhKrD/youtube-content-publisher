@@ -39,7 +39,6 @@ const PHASE_LABEL: Record<UploadProgress["phase"], string> = {
   hashing: "Checking file…",
   creating: "Preparing upload…",
   uploading: "Uploading to Google Drive",
-  finalising: "Verifying upload…",
   completed: "Uploaded",
   failed: "Upload failed",
   cancelled: "Cancelled",
@@ -178,7 +177,7 @@ export function FileUpload({
 
   const busy =
     progress !== null &&
-    ["hashing", "creating", "uploading", "finalising"].includes(progress.phase);
+    ["hashing", "creating", "uploading"].includes(progress.phase);
 
   // ---- already uploaded ----
   if (existing && existing.uploadState === "COMPLETED" && !busy) {
