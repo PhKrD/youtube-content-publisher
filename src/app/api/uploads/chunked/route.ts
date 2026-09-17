@@ -121,30 +121,67 @@ async function handleSessionCreation(principal: any, body: any) {
 
   console.log(`[CHUNKED SESSION] Drive session created: ${session.sessionUri.slice(0, 50)}...`);
 
-  console.log(`[CHUNKED SESSION] Creating MediaFile record`);
-  // Create media file record with session info
-  const media = await db.mediaFile.create({
-    data: {
-      organizationId: principal.organizationId,
+  console.log(`[CHUNKED SESSION] Checking for existing MediaFile of same kind`);
+  // Check if a media file of the same kind already exists for this submission
+  const existingMedia = await db.mediaFile.findFirst({
+    where: {
       submissionId: submission.id,
       kind: kindTyped,
-      originalFilename: parsed.filename,
-      mimeType: parsed.mimeType,
-      sizeBytes: BigInt(parsed.sizeBytes),
-      checksumSha256: parsed.checksumSha256 ?? null,
-      width: parsed.width ?? null,
-      height: parsed.height ?? null,
-      durationSeconds: parsed.durationSeconds ?? null,
-      driveFolderId: folderId,
-      uploadState: UploadState.IN_PROGRESS,
-      resumableSessionUri: session.sessionUri,
-      resumableExpiresAt: session.expiresAt,
-      bytesReceived: 0n,
-      uploadedById: principal.id,
     },
   });
 
-  console.log(`[CHUNKED SESSION] Media file created: ${media.id}`);
+  let media;
+  if (existingMedia) {
+    console.log(`[CHUNKED SESSION] Found existing MediaFile: ${existingMedia.id}, updating it`);
+    // Update the existing media file instead of creating a new one
+    media = await db.mediaFile.update({
+      where: { id: existingMedia.id },
+      data: {
+        originalFilename: parsed.filename,
+        mimeType: parsed.mimeType,
+        sizeBytes: BigInt(parsed.sizeBytes),
+        checksumSha256: parsed.checksumSha256 ?? null,
+        width: parsed.width ?? null,
+        height: parsed.height ?? null,
+        durationSeconds: parsed.durationSeconds ?? null,
+        driveFolderId: folderId,
+        uploadState: UploadState.IN_PROGRESS,
+        resumableSessionUri: session.sessionUri,
+        resumableExpiresAt: session.expiresAt,
+        bytesReceived: 0n,
+        uploadedById: principal.id,
+        driveFileId: null, // Clear old Drive file ID
+        driveMd5: null,
+        driveWebViewLink: null,
+        completedAt: null,
+      },
+    });
+  } else {
+    console.log(`[CHUNKED SESSION] No existing MediaFile, creating new one`);
+    // Create media file record with session info
+    media = await db.mediaFile.create({
+      data: {
+        organizationId: principal.organizationId,
+        submissionId: submission.id,
+        kind: kindTyped,
+        originalFilename: parsed.filename,
+        mimeType: parsed.mimeType,
+        sizeBytes: BigInt(parsed.sizeBytes),
+        checksumSha256: parsed.checksumSha256 ?? null,
+        width: parsed.width ?? null,
+        height: parsed.height ?? null,
+        durationSeconds: parsed.durationSeconds ?? null,
+        driveFolderId: folderId,
+        uploadState: UploadState.IN_PROGRESS,
+        resumableSessionUri: session.sessionUri,
+        resumableExpiresAt: session.expiresAt,
+        bytesReceived: 0n,
+        uploadedById: principal.id,
+      },
+    });
+  }
+
+  console.log(`[CHUNKED SESSION] Media file ready: ${media.id}`);
 
   // Set submission status to UPLOADING
   if (submission.status === SubmissionStatus.DRAFT) {
