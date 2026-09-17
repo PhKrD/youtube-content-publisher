@@ -11,8 +11,9 @@ import { DriveFolderKind, MediaKind, SubmissionStatus, UploadState } from "@/gen
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Chunk size for upload (1 MB chunks to stay well under Vercel limits)
-const CHUNK_SIZE = 1 * 1024 * 1024;
+// Chunk size: 512 KB to stay well under Vercel's 4.5 MB limit
+// Base64 encoding increases size by ~33%, so 512 KB chunk becomes ~683 KB in JSON
+const CHUNK_SIZE = 512 * 1024; // 512 KB
 
 const createSessionSchema = z.object({
   submissionId: z.string(),
@@ -50,6 +51,8 @@ export const POST = route(async (request) => {
     }
   } catch (err) {
     console.error(`[Chunked upload] Unhandled error:`, err);
+    console.error(`[Chunked upload] Error name:`, err instanceof Error ? err.name : 'unknown');
+    console.error(`[Chunked upload] Error message:`, err instanceof Error ? err.message : String(err));
     throw err;
   }
 });
@@ -84,6 +87,12 @@ async function handleSessionCreation(principal: any, body: any) {
     filename: `${submission.reference}-${kindTyped.toLowerCase()}-${parsed.filename}`,
     mimeType: parsed.mimeType,
     sizeBytes: parsed.sizeBytes,
+    appProperties: {
+      submissionId: submission.id,
+      submissionRef: submission.reference,
+      kind: kindTyped,
+      uploadedBy: principal.id,
+    },
   });
 
   console.log(`[Chunked upload] Drive session created: ${session.sessionUri.slice(0, 50)}...`);
@@ -151,17 +160,15 @@ async function handleChunkUpload(principal: any, body: any) {
     throw Errors.forbidden("wrong organization");
   }
 
+  // Decode base64 chunk
+  let chunkBuffer: Buffer;
   try {
-    // Decode base64 chunk
-    const chunkBuffer = Buffer.from(parsed.chunkData, "base64");
+    chunkBuffer = Buffer.from(parsed.chunkData, "base64");
     console.log(`[Chunked upload] Chunk decoded, size: ${chunkBuffer.length} bytes`);
   } catch (err) {
     console.error(`[Chunked upload] Failed to decode base64 chunk:`, err);
     throw Errors.validation("Invalid base64 chunk data");
   }
-
-  const chunkBuffer = Buffer.from(parsed.chunkData, "base64");
-  console.log(`[Chunked upload] Chunk size: ${chunkBuffer.length} bytes`);
 
   // Calculate offset for this chunk
   const offset = parsed.chunkIndex * CHUNK_SIZE;
@@ -177,7 +184,7 @@ async function handleChunkUpload(principal: any, body: any) {
         "Content-Range": `bytes ${offset}-${end - 1}/${mediaFile.sizeBytes}`,
         "Content-Length": String(chunkBuffer.length),
       },
-      body: chunkBuffer,
+      body: chunkBuffer as BodyInit,
     });
 
     console.log(`[Chunked upload] Drive response status: ${response.status}`);
@@ -214,9 +221,12 @@ async function handleChunkUpload(principal: any, body: any) {
         data: {
           uploadState: UploadState.COMPLETED,
           driveFileId: finalBody?.id,
+          driveMd5: finalBody?.md5Checksum,
+          driveWebViewLink: finalBody?.webViewLink,
           bytesReceived: mediaFile.sizeBytes,
           resumableSessionUri: null,
           resumableExpiresAt: null,
+          completedAt: new Date(),
         },
       });
 
