@@ -154,6 +154,111 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 
   report({ phase: "creating", bytesSent: 0 });
 
+  // Use direct upload for files < 4 MB (Vercel limit is 4.5 MB)
+  // Use chunked upload for larger files
+  const USE_DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024; // 4 MB
+  
+  if (file.size < USE_DIRECT_UPLOAD_THRESHOLD) {
+    console.log(`[Upload client] File is small (${file.size} bytes), using direct upload`);
+    return uploadDirect(file, submissionId, kind, checksum, dimensions, duration, meter, report, signal);
+  }
+
+  console.log(`[Upload client] File is large (${file.size} bytes), using chunked upload`);
+  return uploadChunked(file, submissionId, kind, checksum, dimensions, duration, meter, report, signal);
+}
+
+async function uploadDirect(
+  file: File,
+  submissionId: string,
+  kind: string,
+  checksum: string | undefined,
+  dimensions: { width: number; height: number } | undefined,
+  duration: number | undefined,
+  meter: RateMeter,
+  report: (p: any) => void,
+  signal?: AbortSignal,
+): Promise<UploadResult> {
+  console.log(`[Upload client] Using direct upload for ${file.name}, size ${file.size}`);
+
+  // Use FormData for direct upload to our server
+  const formData = new FormData();
+  formData.append("submissionId", submissionId);
+  formData.append("kind", kind);
+  formData.append("filename", file.name);
+  formData.append("mimeType", file.type || "application/octet-stream");
+  formData.append("sizeBytes", String(file.size));
+  if (checksum) formData.append("checksumSha256", checksum);
+  if (dimensions?.width) formData.append("width", String(dimensions.width));
+  if (dimensions?.height) formData.append("height", String(dimensions.height));
+  if (duration) formData.append("durationSeconds", String(duration));
+  formData.append("file", file);
+
+  // Simulate progress for direct upload (we don't get real progress from FormData)
+  let simulatedOffset = 0;
+  const progressInterval = setInterval(() => {
+    if (simulatedOffset < file.size) {
+      simulatedOffset = Math.min(simulatedOffset + file.size / 10, file.size);
+      meter.record(simulatedOffset);
+      report({ phase: "uploading", bytesSent: simulatedOffset });
+    }
+  }, 200);
+
+  try {
+    const res = await fetch("/api/uploads/direct", {
+      method: "POST",
+      body: formData,
+      signal,
+    });
+
+    clearInterval(progressInterval);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[Upload client] Direct upload failed: ${res.status}`, body.slice(0, 500));
+      throw new Error(body.slice(0, 200) || "Upload failed. Please try again.");
+    }
+
+    const completed = (await res.json()) as {
+      mediaFileId: string;
+      driveFileId: string;
+      webViewLink?: string | null;
+      duplicateOfSubmissionRef?: string | null;
+    };
+
+    console.log(`[Upload client] Direct upload complete: ${completed.driveFileId}`);
+
+    report({ phase: "completed", bytesSent: file.size });
+
+    return {
+      mediaFileId: completed.mediaFileId,
+      driveFileId: completed.driveFileId,
+      webViewLink: completed.webViewLink ?? null,
+      duplicateOfSubmissionRef: completed.duplicateOfSubmissionRef ?? null,
+    };
+  } catch (err) {
+    clearInterval(progressInterval);
+    report({
+      phase: "failed",
+      bytesSent: simulatedOffset,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  } finally {
+    clearInterval(progressInterval);
+  }
+}
+
+async function uploadChunked(
+  file: File,
+  submissionId: string,
+  kind: string,
+  checksum: string | undefined,
+  dimensions: { width: number; height: number } | undefined,
+  duration: number | undefined,
+  meter: RateMeter,
+  report: (p: any) => void,
+  signal?: AbortSignal,
+): Promise<UploadResult> {
   console.log(`[Upload client] Using chunked upload for ${file.name}, size ${file.size}`);
 
   // Create chunked upload session
