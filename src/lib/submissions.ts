@@ -261,3 +261,10 @@ export const submissionInclude = {
   titleTemplate: { include: { variables: { orderBy: { sortOrder: "asc" } } } },
   descriptionTemplate: { include: { variables: { orderBy: { sortOrder: "asc" } } } },
 } as const;
+
+/** Optimized include for list views (dashboard, content library) - only essential fields */
+export const submissionListInclude = {
+  playlist: { select: { title: true } },
+  createdBy: { select: { name: true, email: true } },
+  publication: { select: { youtubeVideoId: true, youtubeUrl: true } },
+} as const;

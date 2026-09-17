@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { canEditSubmission, requireOrganization, requirePrincipalPage } from "@/lib/authz";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
 import { canPublish } from "@/lib/authz";
+import { getCachedPlaylists, getCachedTagGroups } from "@/lib/cache";
 import { PageHeader } from "@/components/ui/misc";
 import { StatusBadge } from "@/components/ui/badge";
 import { ContentEditor, type EditorVariable } from "@/components/content/content-editor";
@@ -70,16 +71,8 @@ export default async function EditContentPage({
 
   const organization = await requireOrganization(principal);
   const [playlists, tagGroups] = await Promise.all([
-    db.playlist.findMany({
-      where: { organizationId: principal.organizationId },
-      orderBy: [{ isDefault: "desc" }, { title: "asc" }],
-      select: { id: true, title: true, isAllowed: true },
-    }),
-    db.tagGroup.findMany({
-      where: { organizationId: principal.organizationId, isActive: true },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, name: true, tags: true, isMandatory: true },
-    }),
+    getCachedPlaylists(principal.organizationId),
+    getCachedTagGroups(principal.organizationId),
   ]);
 
   const { report, rendered } = await buildValidationReport(submission, organization, principal);

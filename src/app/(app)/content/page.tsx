@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ExternalLink, LibraryBig, Plus, Search } from "lucide-react";
 import { db } from "@/lib/db";
 import { canReview, requirePrincipalPage } from "@/lib/authz";
+import { submissionListInclude } from "@/lib/submissions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -87,11 +88,16 @@ export default async function ContentLibraryPage({
   const items = await db.submission.findMany({
     where,
     orderBy: { updatedAt: "desc" },
-    take: 60,
-    include: {
-      playlist: { select: { title: true } },
-      createdBy: { select: { name: true, email: true } },
-      publication: { select: { youtubeVideoId: true, youtubeUrl: true } },
+    take: 30, // Reduced from 60 for faster initial load
+    select: {
+      id: true,
+      reference: true,
+      computedTitle: true,
+      topic: true,
+      program: true,
+      status: true,
+      updatedAt: true,
+      ...submissionListInclude,
     },
   });
 
@@ -217,9 +223,9 @@ export default async function ContentLibraryPage({
         )}
       </Card>
 
-      {items.length === 60 && (
+      {items.length === 30 && (
         <p className="mt-3 text-center text-xs text-ink-faint">
-          Showing the 60 most recently updated. Use search to narrow it down.
+          Showing the 30 most recently updated. Use search to narrow it down.
         </p>
       )}
     </>
