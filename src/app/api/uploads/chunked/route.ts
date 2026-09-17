@@ -34,16 +34,23 @@ const uploadChunkSchema = z.object({
 });
 
 export const POST = route(async (request) => {
-  const principal = await requirePrincipal();
-  const body = await request.json();
-  
-  // Check if this is a session creation or chunk upload
-  const isSessionCreation = body.submissionId && !body.mediaFileId;
-  
-  if (isSessionCreation) {
-    return handleSessionCreation(principal, body);
-  } else {
-    return handleChunkUpload(principal, body);
+  try {
+    const principal = await requirePrincipal();
+    const body = await request.json();
+    
+    console.log(`[Chunked upload] POST request received, body keys:`, Object.keys(body));
+    
+    // Check if this is a session creation or chunk upload
+    const isSessionCreation = body.submissionId && !body.mediaFileId;
+    
+    if (isSessionCreation) {
+      return handleSessionCreation(principal, body);
+    } else {
+      return handleChunkUpload(principal, body);
+    }
+  } catch (err) {
+    console.error(`[Chunked upload] Unhandled error:`, err);
+    throw err;
   }
 });
 
@@ -134,14 +141,24 @@ async function handleChunkUpload(principal: any, body: any) {
   });
 
   if (!mediaFile) {
+    console.error(`[Chunked upload] Media file not found: ${parsed.mediaFileId}`);
     throw Errors.notFound("media file");
   }
 
   if (mediaFile.organizationId !== principal.organizationId) {
+    console.error(`[Chunked upload] Organization mismatch: ${mediaFile.organizationId} vs ${principal.organizationId}`);
     throw Errors.forbidden("wrong organization");
   }
 
-  // Decode base64 chunk
+  try {
+    // Decode base64 chunk
+    const chunkBuffer = Buffer.from(parsed.chunkData, "base64");
+    console.log(`[Chunked upload] Chunk size: ${chunkBuffer.length} bytes`);
+  } catch (err) {
+    console.error(`[Chunked upload] Failed to decode base64 chunk:`, err);
+    throw Errors.validation("Invalid base64 chunk data");
+  }
+
   const chunkBuffer = Buffer.from(parsed.chunkData, "base64");
   console.log(`[Chunked upload] Chunk size: ${chunkBuffer.length} bytes`);
 
@@ -151,72 +168,78 @@ async function handleChunkUpload(principal: any, body: any) {
 
   console.log(`[Chunked upload] Uploading chunk to Drive: offset ${offset}, end ${end}`);
 
-  // Upload chunk to Google Drive using the session URI
-  const response = await fetch(mediaFile.resumableSessionUri!, {
-    method: "PUT",
-    headers: {
-      "Content-Range": `bytes ${offset}-${end - 1}/${mediaFile.sizeBytes}`,
-      "Content-Length": String(chunkBuffer.length),
-    },
-    body: chunkBuffer,
-  });
-
-  console.log(`[Chunked upload] Drive response status: ${response.status}`);
-
-  if (response.status === 308) {
-    // Chunk accepted, more expected
-    console.log(`[Chunked upload] Chunk accepted, continuing`);
-    
-    // Update bytes received
-    await db.mediaFile.update({
-      where: { id: mediaFile.id },
-      data: {
-        bytesReceived: mediaFile.bytesReceived + BigInt(chunkBuffer.length),
+  try {
+    // Upload chunk to Google Drive using the session URI
+    const response = await fetch(mediaFile.resumableSessionUri!, {
+      method: "PUT",
+      headers: {
+        "Content-Range": `bytes ${offset}-${end - 1}/${mediaFile.sizeBytes}`,
+        "Content-Length": String(chunkBuffer.length),
       },
+      body: chunkBuffer,
     });
 
-    return ok({
-      status: "chunk_accepted",
-      chunkIndex: parsed.chunkIndex,
-      isFinal: false,
-    });
-  }
+    console.log(`[Chunked upload] Drive response status: ${response.status}`);
 
-  if (response.status === 200 || response.status === 201) {
-    // All chunks accepted, file complete
-    console.log(`[Chunked upload] Upload complete`);
-    
-    const finalBody = await response.json().catch(() => null);
-    
-    // Update media file with Drive file info
-    await db.mediaFile.update({
-      where: { id: mediaFile.id },
-      data: {
-        uploadState: UploadState.COMPLETED,
+    if (response.status === 308) {
+      // Chunk accepted, more expected
+      console.log(`[Chunked upload] Chunk accepted, continuing`);
+      
+      // Update bytes received
+      await db.mediaFile.update({
+        where: { id: mediaFile.id },
+        data: {
+          bytesReceived: mediaFile.bytesReceived + BigInt(chunkBuffer.length),
+        },
+      });
+
+      return ok({
+        status: "chunk_accepted",
+        chunkIndex: parsed.chunkIndex,
+        isFinal: false,
+      });
+    }
+
+    if (response.status === 200 || response.status === 201) {
+      // All chunks accepted, file complete
+      console.log(`[Chunked upload] Upload complete`);
+      
+      const finalBody = await response.json().catch(() => null);
+      console.log(`[Chunked upload] Final body:`, finalBody);
+      
+      // Update media file with Drive file info
+      await db.mediaFile.update({
+        where: { id: mediaFile.id },
+        data: {
+          uploadState: UploadState.COMPLETED,
+          driveFileId: finalBody?.id,
+          bytesReceived: mediaFile.sizeBytes,
+          resumableSessionUri: null,
+          resumableExpiresAt: null,
+        },
+      });
+
+      // Update submission status to UPLOADED_TO_DRIVE
+      await db.submission.update({
+        where: { id: mediaFile.submissionId },
+        data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
+      });
+
+      console.log(`[Chunked upload] Submission status updated to UPLOADED_TO_DRIVE`);
+
+      return ok({
+        status: "upload_complete",
         driveFileId: finalBody?.id,
-        bytesReceived: mediaFile.sizeBytes,
-        resumableSessionUri: null,
-        resumableExpiresAt: null,
-      },
-    });
+        webViewLink: finalBody?.webViewLink,
+      });
+    }
 
-    // Update submission status to UPLOADED_TO_DRIVE
-    await db.submission.update({
-      where: { id: mediaFile.submissionId },
-      data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
-    });
-
-    console.log(`[Chunked upload] Submission status updated to UPLOADED_TO_DRIVE`);
-
-    return ok({
-      status: "upload_complete",
-      driveFileId: finalBody?.id,
-      webViewLink: finalBody?.webViewLink,
-    });
+    // Error
+    const errorText = await response.text();
+    console.error(`[Chunked upload] Drive error ${response.status}:`, errorText);
+    throw Errors.validation(`Drive upload failed: ${response.status} - ${errorText.slice(0, 200)}`);
+  } catch (err) {
+    console.error(`[Chunked upload] Upload failed:`, err);
+    throw err;
   }
-
-  // Error
-  const errorText = await response.text();
-  console.error(`[Chunked upload] Drive error ${response.status}:`, errorText);
-  throw Errors.validation(`Drive upload failed: ${response.status} - ${errorText.slice(0, 200)}`);
 }
