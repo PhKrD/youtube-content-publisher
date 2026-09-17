@@ -52,10 +52,26 @@ export const POST = route(async (request, { params }: Params) => {
                         loaded.status === SubmissionStatus.CHANGES_REQUESTED;
   console.log(`[SUBMIT DEBUG] statusAllowed=${statusAllowed}`);
   
-  if (!canSubmitForReview(principal, loaded)) {
+  // Special case: if status is UPLOADING but we have a completed Drive file, allow submission
+  const hasCompletedDriveFile = loaded.mediaFiles.some(
+    m => m.kind === 'VIDEO' && m.uploadState === 'COMPLETED' && m.driveFileId
+  );
+  const isUploadingWithCompletedFile = loaded.status === SubmissionStatus.UPLOADING && hasCompletedDriveFile;
+  console.log(`[SUBMIT DEBUG] hasCompletedDriveFile=${hasCompletedDriveFile}, isUploadingWithCompletedFile=${isUploadingWithCompletedFile}`);
+  
+  if (!canSubmitForReview(principal, loaded) && !isUploadingWithCompletedFile) {
     console.error(`[SUBMIT DEBUG] canSubmitForReview returned false`);
-    console.error(`[SUBMIT DEBUG] 403 REASON: canSubmitForReview check failed`);
+    console.error(`[SUBMIT DEBUG] 403 REASON: canSubmitForReview check failed (status=${loaded.status}, user=${principal.role}, creator=${loaded.createdById})`);
     throw Errors.forbidden(`cannot submit a submission in status ${loaded.status} (user: ${principal.role}, creator: ${loaded.createdById})`);
+  }
+  
+  // If we're in UPLOADING status but have a completed file, auto-update to UPLOADED_TO_DRIVE
+  if (isUploadingWithCompletedFile) {
+    console.log(`[SUBMIT DEBUG] Auto-updating status from UPLOADING to UPLOADED_TO_DRIVE`);
+    await db.submission.update({
+      where: { id },
+      data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
+    });
   }
 
   const submission = await db.submission.findUniqueOrThrow({

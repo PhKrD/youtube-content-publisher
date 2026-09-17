@@ -194,12 +194,19 @@ export const POST = route(async (request) => {
     console.log(`[Direct upload] Database record created: ${media.id}`);
 
     // Always update the submission status to UPLOADED_TO_DRIVE after successful upload
-    await db.submission.update({
-      where: { id: submission.id },
-      data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
-    });
-
-    console.log(`[Direct upload] Submission status updated to UPLOADED_TO_DRIVE`);
+    console.log(`[Direct upload] About to update submission status to UPLOADED_TO_DRIVE for submission ${submission.id}`);
+    
+    try {
+      const updatedSubmission = await db.submission.update({
+        where: { id: submission.id },
+        data: { status: SubmissionStatus.UPLOADED_TO_DRIVE },
+      });
+      console.log(`[Direct upload] Submission status updated to UPLOADED_TO_DRIVE: ${updatedSubmission.status}`);
+    } catch (statusUpdateError) {
+      console.error(`[Direct upload] FAILED to update submission status:`, statusUpdateError);
+      // Don't fail the upload if the status update fails — the file is safe in Drive
+      // Just log it so we can diagnose
+    }
   } catch (err) {
     console.error(`[Direct upload] Error during Drive upload:`, err);
     const errorMessage = err instanceof Error ? err.message : String(err);
