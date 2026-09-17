@@ -62,6 +62,12 @@ export const POST = route(async (request, { params }: Params) => {
   if (!canSubmitForReview(principal, loaded) && !isUploadingWithCompletedFile) {
     console.error(`[SUBMIT DEBUG] canSubmitForReview returned false`);
     console.error(`[SUBMIT DEBUG] 403 REASON: canSubmitForReview check failed (status=${loaded.status}, user=${principal.role}, creator=${loaded.createdById})`);
+    
+    // Return a more specific error message for UPLOADING status
+    if (loaded.status === SubmissionStatus.UPLOADING) {
+      throw Errors.validation("Submission is still uploading. Please wait for the upload to complete before submitting.");
+    }
+    
     throw Errors.forbidden(`cannot submit a submission in status ${loaded.status} (user: ${principal.role}, creator: ${loaded.createdById})`);
   }
   
