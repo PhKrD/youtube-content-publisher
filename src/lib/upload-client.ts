@@ -205,226 +205,83 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-  report({ phase: "creating", bytesSent: 0 });
-
-  // Check if file is small enough for direct upload (Vercel limit is 4.5 MB)
-  const useDirectUpload = file.size < 4 * 1024 * 1024;
-  
-  if (useDirectUpload) {
-    console.log(`[Upload client] File is small (${file.size} bytes), using direct upload`);
-    // Use FormData for direct upload to our server
-    const formData = new FormData();
-    formData.append("submissionId", submissionId);
-    formData.append("kind", kind);
-    formData.append("filename", file.name);
-    formData.append("mimeType", file.type || "application/octet-stream");
-    formData.append("sizeBytes", String(file.size));
-    if (checksum) formData.append("checksumSha256", checksum);
-    if (dimensions?.width) formData.append("width", String(dimensions.width));
-    if (dimensions?.height) formData.append("height", String(dimensions.height));
-    if (duration) formData.append("durationSeconds", String(duration));
-    formData.append("file", file);
-
-    // Simulate progress for direct upload (we don't get real progress from FormData)
-    let simulatedOffset = 0;
-    const progressInterval = setInterval(() => {
-      if (simulatedOffset < file.size) {
-        simulatedOffset = Math.min(simulatedOffset + file.size / 10, file.size);
-        meter.record(simulatedOffset);
-        report({ phase: "uploading", bytesSent: simulatedOffset });
-      }
-    }, 200);
-
-    try {
-      const res = await fetch("/api/uploads/direct", {
-        method: "POST",
-        body: formData,
-        signal,
-      });
-
-      clearInterval(progressInterval);
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        console.error(`[Upload client] Direct upload failed: ${res.status}`, body.slice(0, 500));
-        throw new Error(body.slice(0, 200) || "Upload failed. Please try again.");
-      }
-
-      const completed = (await res.json()) as {
-        mediaFileId: string;
-        driveFileId: string;
-        webViewLink?: string | null;
-        duplicateOfSubmissionRef?: string | null;
-      };
-
-      console.log(`[Upload client] Direct upload complete: ${completed.driveFileId}`);
-
-      report({ phase: "completed", bytesSent: file.size });
-
-      return {
-        mediaFileId: completed.mediaFileId,
-        driveFileId: completed.driveFileId,
-        webViewLink: completed.webViewLink ?? null,
-        duplicateOfSubmissionRef: completed.duplicateOfSubmissionRef ?? null,
-      };
-    } finally {
-      clearInterval(progressInterval);
-    }
+  // Check file size limit (4 MB for Vercel serverless)
+  const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). ` +
+      `Maximum upload size is 4 MB. Please compress your video before uploading.`
+    );
   }
-
-  // For large files, use resumable upload
-  console.log(`[Upload client] File is large (${file.size} bytes), using resumable upload`);
-
-  const session = await apiJson<CreateSessionResponse>("/api/uploads", {
-    method: "POST",
-    signal,
-    body: JSON.stringify({
-      submissionId,
-      kind,
-      filename: file.name,
-      mimeType: file.type || "application/octet-stream",
-      sizeBytes: file.size,
-      checksumSha256: checksum,
-      width: dimensions?.width,
-      height: dimensions?.height,
-      durationSeconds: duration ?? undefined,
-    }),
-  });
-
-  const chunkSize = alignChunk(session.chunkSize || DEFAULT_CHUNK);
-  let offset = 0;
-  let finalBody: { id?: string; webViewLink?: string; md5Checksum?: string } | null = null;
 
   report({ phase: "uploading", bytesSent: 0 });
 
-  console.log(`[Upload client] Starting upload to ${session.sessionUri.slice(0, 50)}..., total size ${file.size}, chunk size ${chunkSize}`);
+  console.log(`[Upload client] Using direct upload for ${file.name}, size ${file.size}`);
 
-  while (offset < file.size) {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  // Use FormData for direct upload to our server
+  const formData = new FormData();
+  formData.append("submissionId", submissionId);
+  formData.append("kind", kind);
+  formData.append("filename", file.name);
+  formData.append("mimeType", file.type || "application/octet-stream");
+  formData.append("sizeBytes", String(file.size));
+  if (checksum) formData.append("checksumSha256", checksum);
+  if (dimensions?.width) formData.append("width", String(dimensions.width));
+  if (dimensions?.height) formData.append("height", String(dimensions.height));
+  if (duration) formData.append("durationSeconds", String(duration));
+  formData.append("file", file);
 
-    const end = Math.min(offset + chunkSize, file.size);
-    const blob = file.slice(offset, end);
-
-    console.log(`[Upload client] Uploading chunk: offset ${offset}, end ${end}, blob size ${blob.size}`);
-
-    let attempt = 0;
-    for (;;) {
-      try {
-        const res = await fetch(session.sessionUri, {
-          method: "PUT",
-          headers: { "Content-Range": `bytes ${offset}-${end - 1}/${file.size}` },
-          body: blob,
-          signal,
-        });
-
-        // 308: chunk accepted, more expected.
-        if (res.status === 308) {
-          const range = res.headers.get("range");
-          // Trust Google's committed offset over our own arithmetic.
-          offset = range ? Number(range.split("-")[1]) + 1 : end;
-          meter.record(offset);
-          report({ phase: "uploading", bytesSent: offset });
-          break;
-        }
-
-        // 200/201: whole file accepted.
-        if (res.status === 200 || res.status === 201) {
-          finalBody = await res.json().catch(() => null);
-          offset = file.size;
-          meter.record(offset);
-          report({ phase: "finalising", bytesSent: offset });
-          break;
-        }
-
-        // The session is gone; nothing to resume onto.
-        if (res.status === 404 || res.status === 410) {
-          throw new Error(
-            "This upload session expired. Please choose the file again — nothing else about your submission was lost.",
-          );
-        }
-
-        // 5xx / 429: transient. Retry the same chunk.
-        if (res.status >= 500 || res.status === 429) {
-          const body = await res.text().catch(() => "");
-          console.error(`[Drive upload] Google ${res.status} at offset ${offset}:`, body.slice(0, 500));
-          throw Object.assign(new Error(`Google returned ${res.status}`), { transient: true });
-        }
-
-        // 4xx other than 404/410: permanent. Show the actual error.
-        const body = await res.text().catch(() => "");
-        console.error(`[Drive upload] Permanent error ${res.status} at offset ${offset}:`, body.slice(0, 500));
-        throw new Error(
-          `The upload was rejected (${res.status}): ${body.slice(0, 200)}. Please check the file and try again.`,
-        );
-      } catch (err) {
-        console.error(`[Drive upload] Attempt ${attempt + 1} failed at offset ${offset}:`, err instanceof Error ? err.message : String(err));
-        if (signal?.aborted || (err as Error)?.name === "AbortError") throw err;
-
-        const transient =
-          (err as { transient?: boolean }).transient === true ||
-          // A network drop surfaces as a TypeError from fetch.
-          err instanceof TypeError;
-
-        if (!transient || attempt >= MAX_CHUNK_RETRIES) {
-          report({
-            phase: "failed",
-            bytesSent: offset,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          throw err;
-        }
-
-        attempt++;
-        report({ phase: "uploading", bytesSent: offset, retrying: true, attempt });
-
-        // Before retrying, ask Google what it actually has: the failed chunk
-        // may have partially landed, and resending from a stale offset would
-        // corrupt the file.
-        await sleep(Math.min(1000 * 2 ** attempt, 15_000), signal);
-        try {
-          const probe = await fetch(session.sessionUri, {
-            method: "PUT",
-            headers: { "Content-Range": `bytes */${file.size}` },
-            signal,
-          });
-          if (probe.status === 308) {
-            const range = probe.headers.get("range");
-            offset = range ? Number(range.split("-")[1]) + 1 : offset;
-          } else if (probe.status === 200 || probe.status === 201) {
-            finalBody = await probe.json().catch(() => null);
-            offset = file.size;
-            break;
-          }
-        } catch {
-          // Probe failed too — loop and retry the chunk as-is.
-        }
-      }
+  // Simulate progress for direct upload (we don't get real progress from FormData)
+  let simulatedOffset = 0;
+  const progressInterval = setInterval(() => {
+    if (simulatedOffset < file.size) {
+      simulatedOffset = Math.min(simulatedOffset + file.size / 10, file.size);
+      meter.record(simulatedOffset);
+      report({ phase: "uploading", bytesSent: simulatedOffset });
     }
-  }
+  }, 200);
 
-  report({ phase: "finalising", bytesSent: file.size });
-
-  const completed = await apiJson<{ mediaFileId: string; driveFileId: string; webViewLink?: string }>(
-    `/api/uploads/${session.mediaFileId}`,
-    {
+  try {
+    const res = await fetch("/api/uploads/direct", {
       method: "POST",
+      body: formData,
       signal,
-      body: JSON.stringify({
-        driveFileId: finalBody?.id,
-        driveMd5: finalBody?.md5Checksum,
-        webViewLink: finalBody?.webViewLink,
-      }),
-    },
-  );
+    });
 
-  report({ phase: "completed", bytesSent: file.size });
+    clearInterval(progressInterval);
 
-  return {
-    mediaFileId: completed.mediaFileId,
-    driveFileId: completed.driveFileId,
-    webViewLink: completed.webViewLink ?? null,
-    duplicateOfSubmissionRef: session.duplicateOfSubmissionRef,
-  };
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[Upload client] Direct upload failed: ${res.status}`, body.slice(0, 500));
+      throw new Error(body.slice(0, 200) || "Upload failed. Please try again.");
+    }
+
+    const completed = (await res.json()) as {
+      mediaFileId: string;
+      driveFileId: string;
+      webViewLink?: string | null;
+      duplicateOfSubmissionRef?: string | null;
+    };
+
+    console.log(`[Upload client] Direct upload complete: ${completed.driveFileId}`);
+
+    report({ phase: "completed", bytesSent: file.size });
+
+    return {
+      mediaFileId: completed.mediaFileId,
+      driveFileId: completed.driveFileId,
+      webViewLink: completed.webViewLink ?? null,
+      duplicateOfSubmissionRef: completed.duplicateOfSubmissionRef ?? null,
+    };
+  } catch (err) {
+    clearInterval(progressInterval);
+    report({
+      phase: "failed",
+      bytesSent: simulatedOffset,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 export function formatSpeed(bytesPerSecond: number | null): string {
