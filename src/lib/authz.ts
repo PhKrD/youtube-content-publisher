@@ -130,6 +130,11 @@ export function canEditSubmission(p: Principal, s: SubmissionLike): boolean {
   return s.createdById === p.id && CONTRIBUTOR_EDITABLE.has(s.status);
 }
 
+export function canDeletePublishedMedia(p: Principal, s: SubmissionLike): boolean {
+  if (s.organizationId !== p.organizationId || s.status !== SubmissionStatus.PUBLISHED) return false;
+  return isAdmin(p) || s.createdById === p.id;
+}
+
 export function canSubmitForReview(p: Principal, s: SubmissionLike): boolean {
   if (!canEditSubmission(p, s)) return false;
   return (

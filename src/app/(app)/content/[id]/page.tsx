@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { db } from "@/lib/db";
 import {
+  canDeletePublishedMedia,
   canEditSubmission,
   canPublish,
   canPublishSubmission,
@@ -22,6 +23,7 @@ import {
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
 import { getEditorSettings } from "@/lib/org-settings";
 import { PostPack } from "@/components/content/post-pack";
+import { DeleteDriveMedia } from "@/components/content/delete-drive-media";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -337,6 +339,12 @@ export default async function ContentDetailPage({
               </CardContent>
             </Card>
           )}
+
+          {submission.status === SubmissionStatus.PUBLISHED &&
+            submission.mediaFiles.length > 0 &&
+            canDeletePublishedMedia(principal, submission) && (
+              <DeleteDriveMedia submissionId={id} fileCount={submission.mediaFiles.length} />
+            )}
 
           {(rendered.post.text.trim() !== "" || images.length > 0) && (
             <PostPack

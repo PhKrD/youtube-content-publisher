@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./auth", () => ({ auth: vi.fn() }));
 vi.mock("./db", () => ({ db: {} }));
 
-import { canPublishSubmission, type Principal } from "./authz";
+import { canDeletePublishedMedia, canPublishSubmission, type Principal } from "./authz";
 import { Role, SubmissionStatus } from "@/generated/prisma";
 
 const ORG = "org-1";
@@ -22,6 +22,26 @@ const sub = (status: SubmissionStatus, createdById = "u-1") => ({
   organizationId: ORG,
   createdById,
   status,
+});
+
+describe("canDeletePublishedMedia", () => {
+  it("allows the creator and admins to clean up published media", () => {
+    expect(canDeletePublishedMedia(user(), sub(SubmissionStatus.PUBLISHED))).toBe(true);
+    expect(
+      canDeletePublishedMedia(
+        user({ id: "admin", role: Role.ADMIN }),
+        sub(SubmissionStatus.PUBLISHED, "u-2"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects other users, unpublished submissions, and other organizations", () => {
+    expect(canDeletePublishedMedia(user(), sub(SubmissionStatus.PUBLISHED, "u-2"))).toBe(false);
+    expect(canDeletePublishedMedia(user(), sub(SubmissionStatus.READY))).toBe(false);
+    expect(
+      canDeletePublishedMedia(user(), { ...sub(SubmissionStatus.PUBLISHED), organizationId: "org-2" }),
+    ).toBe(false);
+  });
 });
 
 describe("canPublishSubmission", () => {
