@@ -13,12 +13,13 @@ import {
   Upload,
 } from "lucide-react";
 import { db } from "@/lib/db";
-import { requirePrincipalPage } from "@/lib/authz";
+import { canRemoveSubmission, requirePrincipalPage } from "@/lib/authz";
 import { getQueueStats } from "@/lib/publishing/queue";
 import { getIntegration } from "@/lib/google/client";
 import { analyseScopes } from "@/lib/google/scopes";
 import { isPublishingEnabledGlobally } from "@/lib/env";
 import { Button } from "@/components/ui/button";
+import { RemoveSubmissionButton } from "@/components/content/remove-submission-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Alert, EmptyState, PageHeader, StatCard } from "@/components/ui/misc";
@@ -47,7 +48,7 @@ export default async function DashboardPage() {
   const [counts, recent, pendingReview, queue, integration, org] = await Promise.all([
     db.submission.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
     db.submission.findMany({
-      where: scope,
+      where: { ...scope, status: { not: SubmissionStatus.ARCHIVED } },
       orderBy: { updatedAt: "desc" },
       take: 8,
       include: {
@@ -183,7 +184,7 @@ export default async function DashboardPage() {
 
       {/* --- metrics --- */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="Total content" value={total} icon={ListVideo} href="/content" />
+        <StatCard label="Total content" value={total} tone="brand" icon={ListVideo} href="/content" />
         <StatCard label="Drafts" value={drafts} icon={FileEdit} href="/content?status=DRAFT" />
         <StatCard
           label="Under review"
@@ -233,31 +234,36 @@ export default async function DashboardPage() {
             />
           ) : (
             <ul className="divide-y divide-line">
-              {recent.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    href={`/content/${s.id}`}
-                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-muted"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink">
-                        {s.computedTitle
-                          ? truncate(s.computedTitle, 70)
-                          : s.topic || s.program || "Untitled draft"}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-ink-soft">
-                        {s.reference}
-                        {canReview && s.createdBy
-                          ? ` · ${s.createdBy.name ?? s.createdBy.email}`
-                          : ""}
-                        {s.playlist ? ` · ${s.playlist.title}` : ""}
-                        {` · ${relativeTime(s.updatedAt)}`}
-                      </p>
-                    </div>
-                    <StatusBadge status={s.status} />
-                  </Link>
-                </li>
-              ))}
+              {recent.map((s) => {
+                const title = s.computedTitle
+                  ? truncate(s.computedTitle, 70)
+                  : s.topic || s.program || "Untitled draft";
+                return (
+                  <li key={s.id} className="group flex items-center gap-2 px-3 py-1 transition-colors hover:bg-brand-50/40 sm:px-4">
+                    <Link href={`/content/${s.id}`} className="min-w-0 flex flex-1 items-center gap-3 px-1 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">{title}</p>
+                        <p className="mt-0.5 truncate text-xs text-ink-soft">
+                          {s.reference}
+                          {canReview && s.createdBy
+                            ? ` · ${s.createdBy.name ?? s.createdBy.email}`
+                            : ""}
+                          {s.playlist ? ` · ${s.playlist.title}` : ""}
+                          {` · ${relativeTime(s.updatedAt)}`}
+                        </p>
+                      </div>
+                      <StatusBadge status={s.status} />
+                    </Link>
+                    {canRemoveSubmission(p, s) && (
+                      <RemoveSubmissionButton
+                        submissionId={s.id}
+                        published={Boolean(s.publication?.youtubeVideoId)}
+                        title={title}
+                      />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>

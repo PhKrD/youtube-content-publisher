@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
-import { relativeTime, truncate } from "@/lib/utils";
+import { cn, relativeTime, truncate } from "@/lib/utils";
 import { SubmissionStatus, type Prisma } from "@/generated/prisma";
 
 export const metadata: Metadata = { title: "Content" };
@@ -36,6 +36,17 @@ const TABS: { key: string; label: string; statuses?: SubmissionStatus[] }[] = [
   { key: "failed", label: "Failed", statuses: [SubmissionStatus.FAILED] },
   { key: "archived", label: "Archived", statuses: [SubmissionStatus.ARCHIVED] },
 ];
+
+const TAB_STYLES: Record<string, { active: string; idle: string }> = {
+  all: { active: "bg-brand-600 text-white shadow-sm", idle: "bg-brand-50 text-brand-700 hover:bg-brand-100" },
+  drafts: { active: "bg-info-600 text-white shadow-sm", idle: "bg-info-50 text-info-600 hover:bg-info-200/60" },
+  review: { active: "bg-warn-600 text-white shadow-sm", idle: "bg-warn-50 text-warn-700 hover:bg-warn-200/60" },
+  changes: { active: "bg-danger-600 text-white shadow-sm", idle: "bg-danger-50 text-danger-700 hover:bg-danger-200/60" },
+  approved: { active: "bg-success-600 text-white shadow-sm", idle: "bg-success-50 text-success-700 hover:bg-success-200/60" },
+  published: { active: "bg-success-700 text-white shadow-sm", idle: "bg-success-50 text-success-700 hover:bg-success-200/60" },
+  failed: { active: "bg-danger-700 text-white shadow-sm", idle: "bg-danger-50 text-danger-700 hover:bg-danger-200/60" },
+  archived: { active: "bg-ink-soft text-white shadow-sm", idle: "bg-surface-muted text-ink-soft hover:bg-line" },
+};
 
 export default async function ContentLibraryPage({
   searchParams,
@@ -146,11 +157,10 @@ export default async function ContentLibraryPage({
               key={t.key}
               href={`/content?tab=${t.key}${search ? `&q=${encodeURIComponent(search)}` : ""}${mine === "1" ? "&mine=1" : ""}`}
               aria-current={active ? "page" : undefined}
-              className={
-                active
-                  ? "shrink-0 rounded-full bg-brand-600 px-3.5 py-1.5 text-xs font-medium text-white"
-                  : "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium text-ink-soft hover:bg-surface-muted"
-              }
+              className={cn(
+                "shrink-0 rounded-full border border-white/70 px-3.5 py-1.5 text-xs font-semibold transition-all",
+                active ? TAB_STYLES[t.key]!.active : TAB_STYLES[t.key]!.idle,
+              )}
             >
               {t.label}
             </Link>

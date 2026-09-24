@@ -135,6 +135,12 @@ export function canDeletePublishedMedia(p: Principal, s: SubmissionLike): boolea
   return isAdmin(p) || s.createdById === p.id;
 }
 
+export function canRemoveSubmission(p: Principal, s: SubmissionLike): boolean {
+  if (s.organizationId !== p.organizationId) return false;
+  if (s.status === SubmissionStatus.PUBLISHED) return isAdmin(p) || s.createdById === p.id;
+  return canEditSubmission(p, s);
+}
+
 export function canSubmitForReview(p: Principal, s: SubmissionLike): boolean {
   if (!canEditSubmission(p, s)) return false;
   return (

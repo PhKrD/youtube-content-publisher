@@ -133,6 +133,13 @@ export function StatCard({
     warn: "text-warn-700",
     danger: "text-danger-700",
   }[tone];
+  const shellTone = {
+    neutral: "from-surface to-brand-50/35 border-brand-100/80",
+    brand: "from-brand-50 to-info-50 border-brand-200/80",
+    success: "from-success-50 to-surface border-success-200/80",
+    warn: "from-warn-50 to-surface border-warn-200/80",
+    danger: "from-danger-50 to-surface border-danger-200/80",
+  }[tone];
 
   const body = (
     <>
@@ -144,8 +151,10 @@ export function StatCard({
     </>
   );
 
-  const shell =
-    "bg-surface border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-card)] px-4 py-3.5";
+  const shell = cn(
+    "bg-gradient-to-br border rounded-[var(--radius-card)] shadow-[var(--shadow-card)] px-4 py-3.5 transition-all",
+    shellTone,
+  );
 
   if (href) {
     return (

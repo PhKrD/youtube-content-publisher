@@ -9,9 +9,9 @@
    ========================================================================== */
 
 @theme {
-  --color-canvas: oklch(98.5% 0.002 260);
+  --color-canvas: oklch(98% 0.012 255);
   --color-surface: oklch(100% 0 0);
-  --color-surface-muted: oklch(97% 0.003 260);
+  --color-surface-muted: oklch(96.5% 0.014 255);
 
   --color-ink: oklch(21% 0.014 260);
   --color-ink-soft: oklch(45% 0.012 260);
@@ -47,10 +47,10 @@
   --color-info-200: oklch(86% 0.07 230);
   --color-info-600: oklch(55% 0.14 230);
 
-  --radius-card: 0.875rem;
+  --radius-card: 1rem;
 
-  --shadow-card: 0 1px 2px 0 oklch(21% 0.014 260 / 0.04), 0 1px 3px 0 oklch(21% 0.014 260 / 0.06);
-  --shadow-raised: 0 4px 6px -1px oklch(21% 0.014 260 / 0.07), 0 2px 4px -2px oklch(21% 0.014 260 / 0.05);
+  --shadow-card: 0 1px 2px 0 oklch(38% 0.05 260 / 0.04), 0 8px 24px -16px oklch(38% 0.1 260 / 0.18);
+  --shadow-raised: 0 12px 32px -18px oklch(38% 0.12 260 / 0.28), 0 3px 8px -4px oklch(38% 0.05 260 / 0.12);
   --shadow-overlay: 0 20px 25px -5px oklch(21% 0.014 260 / 0.12), 0 8px 10px -6px oklch(21% 0.014 260 / 0.08);
 }
 
@@ -60,6 +60,10 @@ html {
 
 body {
   background-color: var(--color-canvas);
+  background-image:
+    radial-gradient(circle at 8% 0%, oklch(92% 0.06 265 / 0.55), transparent 28rem),
+    radial-gradient(circle at 92% 8%, oklch(94% 0.055 190 / 0.45), transparent 30rem);
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   /* Tabular numerals keep byte counts and percentages from jittering as they

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { ok, parseJson, route } from "@/lib/api";
-import { canEditSubmission, loadSubmissionFor, requireOrganization, requirePrincipal } from "@/lib/authz";
+import { canRemoveSubmission, loadSubmissionFor, requireOrganization, requirePrincipal } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
+import { deleteFile } from "@/lib/google/drive";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
 import { POST_TEMPLATE_MAX } from "@/lib/content-fields";
 import { SubmissionStatus } from "@/generated/prisma";
@@ -199,18 +200,47 @@ export const DELETE = route(async (request, { params }: Params) => {
   const principal = await requirePrincipal();
   const submission = await loadSubmissionFor(principal, id);
 
-  if (!canEditSubmission(principal, submission)) {
-    throw Errors.forbidden("cannot delete this submission");
+  if (!canRemoveSubmission(principal, submission)) {
+    throw Errors.forbidden("cannot remove this submission");
   }
 
   if (submission.publication?.youtubeVideoId) {
-    // Deleting our record would orphan a live YouTube video and lose the
-    // audit trail connecting them.
-    throw Errors.conflict(
-      "This has already been published to YouTube, so it cannot be deleted. Archive it instead.",
-    );
+    await db.$transaction([
+      db.submission.update({
+        where: { id },
+        data: { status: SubmissionStatus.ARCHIVED, archivedAt: new Date() },
+      }),
+      db.submissionEvent.create({
+        data: {
+          submissionId: id,
+          actorId: principal.id,
+          type: "ARCHIVED",
+          message: "Removed from recent content and archived.",
+        },
+      }),
+    ]);
+
+    await audit({
+      organizationId: principal.organizationId,
+      actorId: principal.id,
+      action: AuditAction.SUBMISSION_ARCHIVED,
+      entityType: "Submission",
+      entityId: id,
+      submissionId: id,
+      youtubeVideoId: submission.publication.youtubeVideoId,
+      oldValue: { status: submission.status },
+      newValue: { status: SubmissionStatus.ARCHIVED },
+      request,
+    });
+
+    return ok({ deleted: false, archived: true });
   }
 
+  await Promise.all(
+    submission.mediaFiles.flatMap((file) =>
+      file.driveFileId ? [deleteFile(principal.organizationId, file.driveFileId)] : [],
+    ),
+  );
   await db.submission.delete({ where: { id } });
 
   await audit({
@@ -223,5 +253,5 @@ export const DELETE = route(async (request, { params }: Params) => {
     request,
   });
 
-  return ok({ deleted: true });
+  return ok({ deleted: true, archived: false });
 });

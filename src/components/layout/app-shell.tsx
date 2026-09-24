@@ -102,7 +102,7 @@ export function AppShell({
         </div>
       )}
 
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-white/70 bg-surface/85 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
             <BrandMark className="size-7" />
@@ -120,8 +120,8 @@ export function AppShell({
                 className={cn(
                   "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                   isActive(item.href)
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-ink-soft hover:bg-surface-muted hover:text-ink",
+                    ? "bg-gradient-to-r from-brand-100 to-info-50 text-brand-700 shadow-sm ring-1 ring-brand-200/70"
+                    : "text-ink-soft hover:bg-brand-50/70 hover:text-brand-700",
                 )}
               >
                 <item.icon className="size-4" aria-hidden="true" />
@@ -238,8 +238,8 @@ export function AppShell({
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
                   isActive(item.href)
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-ink-soft hover:bg-surface-muted",
+                    ? "bg-gradient-to-r from-brand-100 to-info-50 text-brand-700 ring-1 ring-brand-200/70"
+                    : "text-ink-soft hover:bg-brand-50/70",
                 )}
               >
                 <item.icon className="size-4.5" aria-hidden="true" />

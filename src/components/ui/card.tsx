@@ -5,7 +5,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "bg-surface border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-card)]",
+        "bg-surface/95 border border-white/80 rounded-[var(--radius-card)] shadow-[var(--shadow-card)] ring-1 ring-line/70 backdrop-blur-sm",
         className,
       )}
       {...props}
@@ -14,7 +14,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-5 py-4 border-b border-line", className)} {...props} />;
+  return <div className={cn("px-5 py-4 border-b border-line/80 bg-gradient-to-r from-brand-50/45 via-transparent to-info-50/35 first:rounded-t-[var(--radius-card)]", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {

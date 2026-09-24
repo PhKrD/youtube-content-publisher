@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./auth", () => ({ auth: vi.fn() }));
 vi.mock("./db", () => ({ db: {} }));
 
-import { canDeletePublishedMedia, canPublishSubmission, type Principal } from "./authz";
+import {
+  canDeletePublishedMedia,
+  canPublishSubmission,
+  canRemoveSubmission,
+  type Principal,
+} from "./authz";
 import { Role, SubmissionStatus } from "@/generated/prisma";
 
 const ORG = "org-1";
@@ -41,6 +46,18 @@ describe("canDeletePublishedMedia", () => {
     expect(
       canDeletePublishedMedia(user(), { ...sub(SubmissionStatus.PUBLISHED), organizationId: "org-2" }),
     ).toBe(false);
+  });
+});
+
+describe("canRemoveSubmission", () => {
+  it("allows authors to delete editable work and archive their published work", () => {
+    expect(canRemoveSubmission(user(), sub(SubmissionStatus.DRAFT))).toBe(true);
+    expect(canRemoveSubmission(user(), sub(SubmissionStatus.PUBLISHED))).toBe(true);
+  });
+
+  it("rejects other contributors and protected workflow states", () => {
+    expect(canRemoveSubmission(user(), sub(SubmissionStatus.DRAFT, "u-2"))).toBe(false);
+    expect(canRemoveSubmission(user(), sub(SubmissionStatus.UNDER_REVIEW))).toBe(false);
   });
 });
 
