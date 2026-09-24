@@ -65,32 +65,6 @@ const nextConfig: NextConfig = {
   // client or edge bundle.
   serverExternalPackages: ["@prisma/client", "pg", "googleapis", "google-auth-library"],
 
-  // Enable compression for better performance
-  compress: true,
-
-  // Optimize images automatically
-  images: {
-    formats: ['image/avif', 'image/webp'],
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '*.googleusercontent.com',
-      },
-      {
-        protocol: 'https',
-        hostname: '*.ggpht.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'i.ytimg.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'yt3.ggpht.com',
-      },
-    ],
-  },
-
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

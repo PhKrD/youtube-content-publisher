@@ -17,14 +17,14 @@ import { env } from "./env";
 function createClient(): PrismaClient {
   const connectionString = env.DATABASE_URL;
 
-  // Supabase's pooler (pgBouncer in transaction mode) cannot hold
-  // session-scoped prepared statements, so keep each function's pool tiny and
-  // let the pooler do the multiplexing.
+  // Supabase's pooler (pgBouncer in transaction mode) does the real
+  // multiplexing, so keep each function's pool small — but not 1: with a
+  // single connection every `Promise.all` of queries silently runs serially.
   const isPooled = /pgbouncer=true|:6543/.test(connectionString);
 
   const adapter = new PrismaPg({
     connectionString,
-    max: isPooled ? 1 : 10,
+    max: isPooled ? 5 : 10,
     // Do not let a wedged connection attempt hang a request indefinitely.
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,

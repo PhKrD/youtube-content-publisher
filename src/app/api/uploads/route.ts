@@ -4,16 +4,15 @@ import { loadSubmissionFor, requirePrincipal, requireOrganization } from "@/lib/
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
-import { createResumableUploadSession, getFolderId, uploadToDriveDirect } from "@/lib/google/drive";
+import { createResumableUploadSession, getFolderId } from "@/lib/google/drive";
 import { ACCEPTED_THUMBNAIL_MIME, ACCEPTED_VIDEO_MIME, formatBytes } from "@/lib/validation";
 import { DriveFolderKind, MediaKind, SubmissionStatus, UploadState } from "@/generated/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Vercel serverless body limit is 4.5 MB. For larger files, we'd need a different
-// approach (streaming through a dedicated upload service). For now, fail fast.
-const MAX_UPLOAD_BYTES = 4.5 * 1024 * 1024;
+const ACCEPTED_IMAGE_MIME = ["image/jpeg", "image/png", "image/webp"] as const;
+const MAX_SUPPORTING_IMAGE_BYTES = 25 * 1024 * 1024;
 
 const schema = z.object({
   submissionId: z.string().min(1),
@@ -43,7 +42,6 @@ export const POST = route(async (request) => {
   const principal = await requirePrincipal();
   const body = await parseJson(request, schema);
 
-  console.log(`[Upload session] Creating session for submission ${body.submissionId}, kind ${body.kind}, file ${body.filename}, size ${body.sizeBytes}`);
 
   const submission = await loadSubmissionFor(principal, body.submissionId, { forEdit: true });
   const org = await requireOrganization(principal);
@@ -62,6 +60,17 @@ export const POST = route(async (request) => {
         `That video is ${formatBytes(body.sizeBytes)}, over the ${formatBytes(
           Number(org.maxVideoBytes),
         )} limit for this organisation.`,
+      );
+    }
+  } else if (kind === MediaKind.SUPPORTING_IMAGE) {
+    // Extra images are stored in Drive alongside the video; they never go to
+    // YouTube, so YouTube's 2 MB thumbnail limit does not apply.
+    if (!(ACCEPTED_IMAGE_MIME as readonly string[]).includes(body.mimeType)) {
+      throw Errors.unsupportedMedia("Images must be JPEG, PNG or WebP.", "images");
+    }
+    if (body.sizeBytes > MAX_SUPPORTING_IMAGE_BYTES) {
+      throw Errors.payloadTooLarge(
+        `That image is ${formatBytes(body.sizeBytes)}. The limit is ${formatBytes(MAX_SUPPORTING_IMAGE_BYTES)}.`,
       );
     }
   } else {
@@ -106,7 +115,6 @@ export const POST = route(async (request) => {
     kind === MediaKind.VIDEO ? DriveFolderKind.DRAFTS : DriveFolderKind.THUMBNAILS,
   );
 
-  console.log(`[Upload session] Folder ID: ${folderId}`);
 
   const session = await createResumableUploadSession({
     organizationId: principal.organizationId,
@@ -123,7 +131,6 @@ export const POST = route(async (request) => {
     },
   });
 
-  console.log(`[Upload session] Session created: sessionUri prefix ${session.sessionUri.slice(0, 50)}..., expires ${session.expiresAt.toISOString()}`);
 
   const media = await db.mediaFile.create({
     data: {
@@ -164,13 +171,12 @@ export const POST = route(async (request) => {
     request,
   });
 
+  // The session URI is a write capability and stays server-side: Google's
+  // upload endpoint has no CORS for this origin, so the browser relays chunks
+  // through /api/uploads/[id]/chunk instead.
   return ok({
     mediaFileId: media.id,
-    // The browser PUTs chunks straight to this. Bytes never touch our server.
-    sessionUri: session.sessionUri,
     expiresAt: session.expiresAt,
-    // Chunk size the client should use — 256 KiB-aligned, as Google requires.
-    chunkSize: 8 * 1024 * 1024,
     duplicateOfSubmissionRef: duplicateOf,
   });
 });

@@ -107,8 +107,6 @@ export const POST = route(async (request, { params }: Params) => {
   const { principal, media } = await loadMedia(id);
   const body = await parseJson(request, completeSchema);
 
-  console.log(`[Upload complete] Finalising upload ${id}, driveFileId ${body.driveFileId}`);
-
   const info = await getFileInfo(principal.organizationId, body.driveFileId);
 
   if (info.sizeBytes !== Number(media.sizeBytes)) {
@@ -156,7 +154,9 @@ export const POST = route(async (request, { params }: Params) => {
       message:
         media.kind === MediaKind.VIDEO
           ? "Video uploaded to Google Drive."
-          : "Thumbnail uploaded to Google Drive.",
+          : media.kind === MediaKind.THUMBNAIL
+            ? "Thumbnail uploaded to Google Drive."
+            : "Image uploaded to Google Drive.",
       metadata: { filename: media.originalFilename },
     },
   });

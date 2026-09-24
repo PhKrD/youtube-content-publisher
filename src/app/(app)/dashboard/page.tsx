@@ -18,8 +18,6 @@ import { getQueueStats } from "@/lib/publishing/queue";
 import { getIntegration } from "@/lib/google/client";
 import { analyseScopes } from "@/lib/google/scopes";
 import { isPublishingEnabledGlobally } from "@/lib/env";
-import { getCachedOrganization } from "@/lib/cache";
-import { submissionListInclude } from "@/lib/submissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -51,15 +49,8 @@ export default async function DashboardPage() {
     db.submission.findMany({
       where: scope,
       orderBy: { updatedAt: "desc" },
-      take: 5, // Reduced from 8 for faster load
-      select: {
-        id: true,
-        reference: true,
-        computedTitle: true,
-        topic: true,
-        program: true,
-        status: true,
-        updatedAt: true,
+      take: 8,
+      include: {
         playlist: { select: { title: true } },
         createdBy: { select: { name: true, email: true } },
         publication: { select: { youtubeVideoId: true } },
@@ -72,21 +63,20 @@ export default async function DashboardPage() {
             status: { in: [SubmissionStatus.SUBMITTED, SubmissionStatus.UNDER_REVIEW] },
           },
           orderBy: { submittedAt: "asc" },
-          take: 3, // Reduced from 5
-          select: {
-            id: true,
-            reference: true,
-            computedTitle: true,
-            topic: true,
-            submittedAt: true,
-            updatedAt: true,
-            createdBy: { select: { name: true, email: true } },
-          },
+          take: 5,
+          include: { createdBy: { select: { name: true, email: true } } },
         })
       : Promise.resolve([]),
     isAdmin ? getQueueStats(p.organizationId) : Promise.resolve(null),
     isAdmin ? getIntegration(p.organizationId) : Promise.resolve(null),
-    getCachedOrganization(p.organizationId),
+    db.organization.findUnique({
+      where: { id: p.organizationId },
+      select: {
+        productionPublishingEnabled: true,
+        setupCompletedAt: true,
+        approvalMode: true,
+      },
+    }),
   ]);
 
   const count = (s: SubmissionStatus) =>

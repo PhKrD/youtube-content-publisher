@@ -62,9 +62,16 @@ async function probeImage(file: File): Promise<{ width: number; height: number }
   if (!file.type.startsWith("image/")) return undefined;
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve({ width: img.width, height: img.height });
-    img.onerror = () => resolve(undefined);
-    img.src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      resolve({ width: img.width, height: img.height });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      resolve(undefined);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
   });
 }
 
@@ -102,29 +109,47 @@ class RateMeter {
 }
 
 async function apiJson<T>(url: string, options: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
-  const body = await res.json() as T & { error?: { message: string } };
-  if (!res.ok) {
-    throw new Error(body?.error?.message ?? "Something went wrong. Please try again.");
+  let res: Response;
+  try {
+    res = await fetch(url, options);
+  } catch (err) {
+    // A dropped connection surfaces as a TypeError; worth retrying.
+    if ((err as Error)?.name === "AbortError") throw err;
+    throw Object.assign(new Error("Network connection lost. Retrying…"), { retryable: true });
+  }
+  const body = (await res.json().catch(() => null)) as
+    | (T & { error?: { message?: string; retryable?: boolean } })
+    | null;
+  if (!res.ok || !body) {
+    throw Object.assign(
+      new Error(body?.error?.message ?? `Something went wrong (${res.status}). Please try again.`),
+      { retryable: body?.error?.retryable ?? res.status >= 500 },
+    );
   }
   return body;
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
+/**
+ * 4 MiB: a multiple of Drive's 256 KiB alignment and under Vercel's 4.5 MB
+ * function body limit. Must match MAX_CHUNK_BYTES in /api/uploads/[id]/chunk.
+ */
+const CHUNK_BYTES = 4 * 1024 * 1024;
+const MAX_CHUNK_ATTEMPTS = 4;
+
+type ChunkResult =
+  | { complete: false; receivedBytes: number }
+  | { complete: true; driveFileId: string; driveMd5: string | null; webViewLink: string | null };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Uploads a file using chunked upload to support files of any size.
- * Browser uploads file in chunks to server, server streams to Google Drive.
+ * Uploads a file of any size to Google Drive via a resumable session.
+ *
+ * Google's upload endpoint has no CORS for this origin, so raw chunks are
+ * relayed through /api/uploads/[id]/chunk, each small enough for one
+ * serverless request. Chunks go sequentially; after a transient failure the
+ * committed offset is re-read from Drive so a partially landed chunk cannot
+ * corrupt the file.
  */
 export async function uploadFile(options: UploadOptions): Promise<UploadResult> {
   const { file, submissionId, kind, onProgress, signal } = options;
@@ -154,19 +179,13 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 
   report({ phase: "creating", bytesSent: 0 });
 
-  console.log(`[Upload client] Using chunked upload for ${file.name}, size ${file.size}`);
-
-  // Create chunked upload session
-  const session = await apiJson<{
-    mediaFileId: string;
-    sessionUri: string;
-    chunkSize: number;
-    totalChunks: number;
-    status: string;
-  }>("/api/uploads/chunked", {
-    method: "POST",
-    signal,
-    body: JSON.stringify({
+  const session = await apiJson<{ mediaFileId: string; duplicateOfSubmissionRef: string | null }>(
+    "/api/uploads",
+    {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
       submissionId,
       kind,
       filename: file.name,
@@ -175,67 +194,76 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
       checksumSha256: checksum,
       width: dimensions?.width,
       height: dimensions?.height,
-      durationSeconds: duration ?? undefined,
-    }),
-  });
+        durationSeconds: duration ?? undefined,
+      }),
+    },
+  );
 
-  console.log(`[Upload client] Session created: ${session.mediaFileId}, total chunks: ${session.totalChunks}`);
-
-  const chunkSize = session.chunkSize;
-  const totalChunks = session.totalChunks;
+  const base = `/api/uploads/${session.mediaFileId}`;
   let offset = 0;
-
+  let done: Extract<ChunkResult, { complete: true }> | null = null;
   report({ phase: "uploading", bytesSent: 0 });
 
-  // Upload file in chunks
-  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+  // Consecutive failures; reset whenever Drive commits more bytes.
+  let failures = 0;
+  while (!done) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const end = Math.min(offset + CHUNK_BYTES, file.size);
 
-    const end = Math.min(offset + chunkSize, file.size);
-    const blob = file.slice(offset, end);
-
-    console.log(`[Upload client] Uploading chunk ${chunkIndex + 1}/${totalChunks}: offset ${offset}, size ${blob.size}`);
-
-    // Convert blob to base64
-    const chunkBase64 = await blobToBase64(blob);
-
-    const res = await fetch("/api/uploads/chunked", {
-      method: "POST",
-      signal,
-      body: JSON.stringify({
-        mediaFileId: session.mediaFileId,
-        chunkIndex,
-        chunkData: chunkBase64,
-        totalChunks,
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`[Upload client] Chunk ${chunkIndex + 1} failed: ${res.status}`, body.slice(0, 500));
-      throw new Error(`Chunk upload failed: ${body.slice(0, 200)}`);
+    try {
+      const result = await apiJson<ChunkResult>(`${base}/chunk?offset=${offset}`, {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/octet-stream" },
+        body: file.slice(offset, end),
+      });
+      if (result.complete) {
+        done = result;
+      } else if (result.receivedBytes > offset) {
+        offset = result.receivedBytes;
+        failures = 0;
+      } else {
+        throw Object.assign(new Error("Google Drive did not accept the chunk."), { retryable: true });
+      }
+    } catch (err) {
+      failures++;
+      if (signal?.aborted || failures >= MAX_CHUNK_ATTEMPTS || !(err as { retryable?: boolean }).retryable) {
+        throw err;
+      }
+      report({ phase: "uploading", bytesSent: offset, retrying: true, attempt: failures });
+      await sleep(1000 * 2 ** (failures - 1));
+      // Resume from what Drive actually committed, not from our own arithmetic.
+      const status = await apiJson<{ bytesReceived?: number }>(base, { signal }).catch(() => null);
+      if (typeof status?.bytesReceived === "number") offset = status.bytesReceived;
+      continue;
     }
 
-    const result = await res.json();
-    console.log(`[Upload client] Chunk ${chunkIndex + 1} result:`, result.status);
-
-    if (result.status === "upload_complete") {
-      console.log(`[Upload client] Upload complete: ${result.driveFileId}`);
-      report({ phase: "completed", bytesSent: file.size });
-      return {
-        mediaFileId: session.mediaFileId,
-        driveFileId: result.driveFileId,
-        webViewLink: result.webViewLink ?? null,
-        duplicateOfSubmissionRef: null,
-      };
-    }
-
-    offset = end;
-    meter.record(offset);
-    report({ phase: "uploading", bytesSent: offset });
+    const sent = done ? file.size : offset;
+    meter.record(sent);
+    report({ phase: "uploading", bytesSent: sent });
   }
 
-  throw new Error("Upload did not complete successfully");
+  const completed = await apiJson<{ mediaFileId: string; driveFileId: string; webViewLink: string | null }>(
+    base,
+    {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        driveFileId: done.driveFileId,
+        driveMd5: done.driveMd5 ?? undefined,
+        webViewLink: done.webViewLink ?? undefined,
+      }),
+    },
+  );
+
+  report({ phase: "completed", bytesSent: file.size });
+  return {
+    mediaFileId: completed.mediaFileId,
+    driveFileId: completed.driveFileId,
+    webViewLink: completed.webViewLink,
+    duplicateOfSubmissionRef: session.duplicateOfSubmissionRef,
+  };
 }
 
 export function formatSpeed(bytesPerSecond: number | null): string {

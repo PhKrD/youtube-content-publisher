@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "./auth";
 import { db } from "./db";
@@ -28,8 +29,13 @@ const ROLE_RANK: Record<Role, number> = {
   [Role.ADMIN]: 3,
 };
 
-/** Current principal, or null when not signed in / not yet provisioned. */
-export async function getPrincipal(): Promise<Principal | null> {
+/**
+ * Current principal, or null when not signed in / not yet provisioned.
+ *
+ * Memoised per request with React `cache`: the layout and the page both ask,
+ * and each uncached call costs two database round trips (session + user).
+ */
+export const getPrincipal = cache(async (): Promise<Principal | null> => {
   const session = await auth();
   const u = session?.user;
   if (!u?.id || !u.organizationId) return null;
@@ -42,7 +48,7 @@ export async function getPrincipal(): Promise<Principal | null> {
     organizationId: u.organizationId,
     canPublishDirectly: u.canPublishDirectly,
   };
-}
+});
 
 /**
  * For Server Components / pages: redirects instead of throwing, so an expired
@@ -146,6 +152,14 @@ export function canReviewSubmission(p: Principal, s: SubmissionLike): boolean {
   return s.status === SubmissionStatus.SUBMITTED || s.status === SubmissionStatus.UNDER_REVIEW;
 }
 
+/** Statuses from which a publisher may go straight to YouTube. */
+const DIRECTLY_PUBLISHABLE = new Set<SubmissionStatus>([
+  SubmissionStatus.DRAFT,
+  SubmissionStatus.UPLOADED_TO_DRIVE,
+  SubmissionStatus.READY,
+  SubmissionStatus.FAILED,
+]);
+
 export function canPublishSubmission(
   p: Principal,
   s: SubmissionLike,
@@ -153,18 +167,18 @@ export function canPublishSubmission(
 ): boolean {
   if (s.organizationId !== p.organizationId) return false;
   if (!canPublish(p)) return false;
+  const own = s.createdById === p.id;
   if (approvalRequired) {
-    // Approval mode: only approved content may be published, by anyone with
-    // the publish capability.
-    return s.status === SubmissionStatus.APPROVED;
+    // Approved content may be published by anyone with the publish grant.
+    // The grant also marks a trusted publisher whose OWN work skips review;
+    // everyone else's content still needs approval first.
+    return s.status === SubmissionStatus.APPROVED || (own && DIRECTLY_PUBLISHABLE.has(s.status));
   }
-  // Direct-publish mode: the author (or an admin) can go straight out.
-  const ownOrAdmin = isAdmin(p) || s.createdById === p.id;
+  // Direct-publish mode: the author (or an admin) can go straight out. Full
+  // server-side validation still runs before anything is queued.
   return (
-    ownOrAdmin &&
-    (s.status === SubmissionStatus.READY ||
-      s.status === SubmissionStatus.APPROVED ||
-      s.status === SubmissionStatus.FAILED)
+    (isAdmin(p) || own) &&
+    (s.status === SubmissionStatus.APPROVED || DIRECTLY_PUBLISHABLE.has(s.status))
   );
 }
 

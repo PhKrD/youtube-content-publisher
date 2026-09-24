@@ -4,11 +4,11 @@ import {
   ClipboardCheck,
   HardDriveUpload,
   Lock,
-  PlayCircle,
   ShieldCheck,
   UserCheck,
 } from "lucide-react";
 import { getPrincipal } from "@/lib/authz";
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -30,9 +30,7 @@ export default async function RootPage() {
     <main className="min-h-dvh bg-canvas px-4 py-12 sm:py-16">
       <div className="mx-auto w-full max-w-2xl">
         <header className="text-center">
-          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-brand-600 shadow-[var(--shadow-raised)]">
-            <PlayCircle className="size-7 text-white" aria-hidden="true" />
-          </div>
+          <BrandMark className="mx-auto mb-4 size-12 rounded-xl shadow-[var(--shadow-raised)]" />
           <h1 className="text-2xl font-semibold tracking-tight text-ink">
             Channel Publisher
           </h1>

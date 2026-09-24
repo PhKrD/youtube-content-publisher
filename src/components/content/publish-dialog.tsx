@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { AlertTriangle, PlayCircle, Rocket } from "lucide-react";
+import { AlertTriangle, Rocket, Tv } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
@@ -110,7 +110,7 @@ export function PublishDialog({
               <DetailRow label="Title">{title || "—"}</DetailRow>
               <DetailRow label="Channel">
                 <span className="flex items-center gap-1.5 font-medium">
-                  <PlayCircle className="size-4 text-danger-600" aria-hidden="true" />
+                  <Tv className="size-4 text-ink-soft" aria-hidden="true" />
                   {channelTitle ?? "Not configured"}
                 </span>
               </DetailRow>

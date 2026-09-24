@@ -6,7 +6,6 @@ import { db } from "@/lib/db";
 import { canEditSubmission, requireOrganization, requirePrincipalPage } from "@/lib/authz";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
 import { canPublish } from "@/lib/authz";
-import { getCachedPlaylists, getCachedTagGroups } from "@/lib/cache";
 import { PageHeader } from "@/components/ui/misc";
 import { StatusBadge } from "@/components/ui/badge";
 import { ContentEditor, type EditorVariable } from "@/components/content/content-editor";
@@ -71,8 +70,16 @@ export default async function EditContentPage({
 
   const organization = await requireOrganization(principal);
   const [playlists, tagGroups] = await Promise.all([
-    getCachedPlaylists(principal.organizationId),
-    getCachedTagGroups(principal.organizationId),
+    db.playlist.findMany({
+      where: { organizationId: principal.organizationId },
+      orderBy: [{ isDefault: "desc" }, { title: "asc" }],
+      select: { id: true, title: true, isAllowed: true },
+    }),
+    db.tagGroup.findMany({
+      where: { organizationId: principal.organizationId, isActive: true },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, name: true, tags: true, isMandatory: true },
+    }),
   ]);
 
   const { report, rendered } = await buildValidationReport(submission, organization, principal);
@@ -154,6 +161,19 @@ export default async function EditContentPage({
                 driveWebViewLink: thumbnail.driveWebViewLink,
               }
             : null,
+          images: submission.mediaFiles
+            .filter((m) => m.kind === MediaKind.SUPPORTING_IMAGE && m.uploadState === "COMPLETED")
+            .map((m) => ({
+              id: m.id,
+              kind: "SUPPORTING_IMAGE" as const,
+              originalFilename: m.originalFilename,
+              sizeBytes: Number(m.sizeBytes),
+              mimeType: m.mimeType,
+              uploadState: m.uploadState,
+              width: m.width,
+              height: m.height,
+              driveWebViewLink: m.driveWebViewLink,
+            })),
         }}
         initial={{
           program: submission.program ?? "",

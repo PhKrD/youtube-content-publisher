@@ -71,6 +71,9 @@ export default async function ContentDetailPage({
   const approvalRequired = organization.approvalMode === ApprovalMode.APPROVAL_REQUIRED;
   const video = submission.mediaFiles.find((m) => m.kind === MediaKind.VIDEO);
   const thumbnail = submission.mediaFiles.find((m) => m.kind === MediaKind.THUMBNAIL);
+  const images = submission.mediaFiles.filter(
+    (m) => m.kind === MediaKind.SUPPORTING_IMAGE && m.uploadState === "COMPLETED",
+  );
 
   const mayEdit = canEditSubmission(principal, submission);
   const mayReview = canReviewSubmission(principal, submission);
@@ -258,6 +261,20 @@ export default async function ContentDetailPage({
                     : null
                 }
               />
+              {images.map((img, i) => (
+                <MediaRow
+                  key={img.id}
+                  icon={ImageIcon}
+                  label={`Image ${i + 1}`}
+                  file={{
+                    name: img.originalFilename,
+                    meta: `${formatBytes(Number(img.sizeBytes))}${
+                      img.width ? ` · ${img.width}×${img.height}` : ""
+                    }`,
+                    link: img.driveWebViewLink,
+                  }}
+                />
+              ))}
             </CardContent>
           </Card>
         </div>

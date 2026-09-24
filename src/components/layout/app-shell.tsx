@@ -12,12 +12,12 @@ import {
   LibraryBig,
   LogOut,
   Menu,
-  PlayCircle,
   Plus,
   Settings,
   X,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Role } from "@/generated/prisma";
 
@@ -105,9 +105,7 @@ export function AppShell({
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-brand-600">
-              <PlayCircle className="size-4.5 text-white" aria-hidden="true" />
-            </span>
+            <BrandMark className="size-7" />
             <span className="hidden text-sm font-semibold text-ink sm:inline">
               Channel Publisher
             </span>

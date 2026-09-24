@@ -97,9 +97,15 @@ export function UserRow({
             size="sm"
             variant={user.canPublishDirectly ? "primary" : "secondary"}
             disabled={busy}
+            aria-pressed={user.canPublishDirectly}
+            title={
+              user.canPublishDirectly
+                ? "This person can publish their own content to YouTube without review. Click to revoke."
+                : "Click to let this person publish their own content to YouTube without review."
+            }
             onClick={() => patch({ canPublishDirectly: !user.canPublishDirectly })}
           >
-            {user.canPublishDirectly ? "Can publish" : "Cannot publish"}
+            {user.canPublishDirectly ? "Direct publish: On" : "Direct publish: Off"}
           </Button>
         )}
 

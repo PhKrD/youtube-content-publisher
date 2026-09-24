@@ -214,10 +214,13 @@ export function FileUpload({
               {existing.width && existing.height ? ` · ${existing.width}×${existing.height}` : ""}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={() => inputRef.current?.click()}>
-                <RotateCw className="size-3.5" aria-hidden="true" />
-                Replace
-              </Button>
+              {/* Extra images are additive; replacing one is remove + add. */}
+              {kind !== "SUPPORTING_IMAGE" && (
+                <Button size="sm" variant="secondary" onClick={() => inputRef.current?.click()}>
+                  <RotateCw className="size-3.5" aria-hidden="true" />
+                  Replace
+                </Button>
+              )}
               <Button size="sm" variant="ghost" onClick={remove}>
                 <Trash2 className="size-3.5" aria-hidden="true" />
                 Remove

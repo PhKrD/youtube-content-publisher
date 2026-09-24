@@ -45,7 +45,7 @@ export interface EditorProps {
   categories: { id: string; title: string }[];
   tagGroups: { id: string; name: string; tags: string[]; isMandatory: boolean }[];
   variables: EditorVariable[];
-  media: { video: ExistingMedia | null; thumbnail: ExistingMedia | null };
+  media: { video: ExistingMedia | null; thumbnail: ExistingMedia | null; images: ExistingMedia[] };
   initial: {
     program: string;
     topic: string;
@@ -278,6 +278,35 @@ export function ContentEditor(props: EditorProps) {
                 onChanged={() => router.refresh()}
                 anchorId="field-thumbnail"
               />
+            </div>
+
+            <div data-field-anchor="images">
+              <p className="mb-2 text-sm font-medium text-ink">
+                Images <span className="font-normal text-ink-faint">(optional)</span>
+              </p>
+              <div className="space-y-2">
+                {props.media.images.map((img) => (
+                  <FileUpload
+                    key={img.id}
+                    submissionId={props.submissionId}
+                    kind="SUPPORTING_IMAGE"
+                    label="Image"
+                    accept="image/jpeg,image/png,image/webp"
+                    existing={img}
+                    onChanged={() => router.refresh()}
+                  />
+                ))}
+                <FileUpload
+                  // Re-mount after each upload so the empty slot is ready for the next image.
+                  key={`new-image-${props.media.images.length}`}
+                  submissionId={props.submissionId}
+                  kind="SUPPORTING_IMAGE"
+                  label="Add an image"
+                  description="Posters, slides or photos. JPEG, PNG or WebP, up to 25 MB. Saved to Google Drive with the video — not published to YouTube."
+                  accept="image/jpeg,image/png,image/webp"
+                  onChanged={() => router.refresh()}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -644,7 +673,7 @@ export function ContentEditor(props: EditorProps) {
               </Button>
             )}
 
-            {props.canPublish && !props.approvalRequired && (
+            {props.canPublish && (
               <Button
                 variant="publish"
                 full

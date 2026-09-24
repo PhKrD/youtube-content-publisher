@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, PlayCircle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { getPrincipal } from "@/lib/authz";
+import { BrandMark } from "@/components/brand-mark";
 import { isGoogleOAuthConfigured } from "@/lib/env";
 import { Alert } from "@/components/ui/misc";
 import { SignInButton } from "./sign-in-button";
@@ -38,9 +39,7 @@ export default async function SignInPage({
     <main className="flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-brand-600 shadow-[var(--shadow-raised)]">
-            <PlayCircle className="size-7 text-white" aria-hidden="true" />
-          </div>
+          <BrandMark className="mx-auto mb-4 size-12 rounded-xl shadow-[var(--shadow-raised)]" />
           <h1 className="text-xl font-semibold tracking-tight text-ink">
             Channel Publisher
           </h1>
