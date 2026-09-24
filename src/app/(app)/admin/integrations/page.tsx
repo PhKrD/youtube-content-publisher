@@ -290,7 +290,7 @@ export default async function IntegrationsPage({
               <div>
                 <CardTitle>Playlists</CardTitle>
                 <p className="mt-1 text-xs text-ink-soft">
-                  {playlistCount} cached. Refreshing uses YouTube API quota, so it is manual.
+                  {playlistCount} cached. Refreshed automatically within 28 days; you can also refresh now.
                 </p>
               </div>
               <SyncPlaylistsButton />
