@@ -64,7 +64,6 @@ export default async function PlaylistsPage() {
                   id: p.id,
                   title: p.title,
                   youtubePlaylistId: p.youtubePlaylistId,
-                  itemCount: p.itemCount,
                   privacyStatus: p.privacyStatus,
                   isAllowed: p.isAllowed,
                   isDefault: p.isDefault,
@@ -77,8 +76,8 @@ export default async function PlaylistsPage() {
       </Card>
 
       <Alert tone="info" className="mt-4">
-        A playlist that has been deleted on YouTube is marked unavailable rather than removed, so
-        older submissions keep a readable record of where they were filed.
+        A playlist deleted on YouTube is marked unavailable. Its old API metadata is removed while
+        historical submissions retain an unavailable-playlist reference.
       </Alert>
     </>
   );

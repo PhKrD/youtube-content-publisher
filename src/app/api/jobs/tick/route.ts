@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "@/lib/env";
 import { safeEqual } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
+import { maintainStoredYouTubeData } from "@/lib/google/youtube";
 import { claimNextJob, reclaimExpiredLeases } from "@/lib/publishing/queue";
 import { runJob } from "@/lib/publishing/engine";
 
@@ -56,6 +57,11 @@ async function handle(request: Request) {
   let claimed = 0;
 
   try {
+    await maintainStoredYouTubeData().catch((error) =>
+      logger.error("YouTube data maintenance failed", {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     await reclaimExpiredLeases();
 
     while (Date.now() < deadline) {

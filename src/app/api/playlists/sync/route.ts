@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
-import { syncPlaylists } from "@/lib/google/youtube";
+import { refreshStoredYouTubeData } from "@/lib/google/youtube";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export const POST = route(async (request) => {
   });
   if (!channel) throw Errors.notConfigured("A YouTube channel");
 
-  const result = await syncPlaylists(principal.organizationId, channel.id);
+  const result = await refreshStoredYouTubeData(principal.organizationId, channel.id);
 
   await audit({
     organizationId: principal.organizationId,

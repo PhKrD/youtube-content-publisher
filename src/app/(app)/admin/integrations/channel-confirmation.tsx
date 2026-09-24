@@ -25,8 +25,6 @@ export function ChannelConfirmation({
     youtubeChannelId: string;
     customUrl: string | null;
     thumbnailUrl: string | null;
-    subscriberCount: number | null;
-    videoCount: number | null;
     confirmedAt: string | null;
   };
 }) {
@@ -96,11 +94,6 @@ export function ChannelConfirmation({
           <p className="text-base font-semibold text-ink">{channel.title}</p>
           {channel.customUrl && <p className="text-sm text-ink-soft">{channel.customUrl}</p>}
           <p className="mt-0.5 font-mono text-xs text-ink-faint">{channel.youtubeChannelId}</p>
-          <p className="mt-1 text-xs text-ink-soft">
-            {channel.videoCount !== null && `${channel.videoCount.toLocaleString()} videos`}
-            {channel.subscriberCount !== null &&
-              ` · ${channel.subscriberCount.toLocaleString()} subscribers`}
-          </p>
           <a
             href={`https://www.youtube.com/channel/${channel.youtubeChannelId}`}
             target="_blank"

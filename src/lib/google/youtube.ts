@@ -74,8 +74,6 @@ export interface ChannelInfo {
   customUrl: string | null;
   thumbnailUrl: string | null;
   uploadsPlaylistId: string | null;
-  subscriberCount: number | null;
-  videoCount: number | null;
 }
 
 /**
@@ -91,7 +89,7 @@ export async function fetchMyChannel(organizationId: string): Promise<ChannelInf
   let res;
   try {
     res = await youtube.channels.list({
-      part: ["id", "snippet", "contentDetails", "statistics"],
+      part: ["id", "snippet", "contentDetails"],
       mine: true,
       maxResults: 1,
     });
@@ -117,9 +115,7 @@ export async function fetchMyChannel(organizationId: string): Promise<ChannelInf
       customUrl: ch.snippet?.customUrl ?? null,
       thumbnailUrl:
         ch.snippet?.thumbnails?.medium?.url ?? ch.snippet?.thumbnails?.default?.url ?? null,
-      uploadsPlaylistId: ch.contentDetails?.relatedPlaylists?.uploads ?? null,
-    subscriberCount: ch.statistics?.subscriberCount ? Number(ch.statistics.subscriberCount) : null,
-    videoCount: ch.statistics?.videoCount ? Number(ch.statistics.videoCount) : null,
+    uploadsPlaylistId: ch.contentDetails?.relatedPlaylists?.uploads ?? null,
   };
 }
 
@@ -131,7 +127,6 @@ export interface PlaylistInfo {
   youtubePlaylistId: string;
   title: string;
   description: string | null;
-  itemCount: number;
   privacyStatus: string | null;
   thumbnailUrl: string | null;
 }
@@ -145,7 +140,7 @@ export async function fetchMyPlaylists(organizationId: string): Promise<Playlist
   try {
     do {
       const res = await youtube.playlists.list({
-        part: ["id", "snippet", "status", "contentDetails"],
+        part: ["id", "snippet", "status"],
         mine: true,
         maxResults: 50,
         pageToken,
@@ -156,7 +151,6 @@ export async function fetchMyPlaylists(organizationId: string): Promise<Playlist
           youtubePlaylistId: p.id,
           title: p.snippet?.title ?? "(untitled playlist)",
           description: p.snippet?.description ?? null,
-          itemCount: p.contentDetails?.itemCount ?? 0,
           privacyStatus: p.status?.privacyStatus ?? null,
           thumbnailUrl:
             p.snippet?.thumbnails?.medium?.url ?? p.snippet?.thumbnails?.default?.url ?? null,
@@ -176,8 +170,8 @@ export async function fetchMyPlaylists(organizationId: string): Promise<Playlist
  * Refreshes the cached playlist rows.
  *
  * Playlists removed on YouTube are marked `isAllowed = false` rather than
- * deleted, so historical submissions keep a readable reference to where they
- * were filed.
+ * deleted, so historical submissions retain the relationship without retaining
+ * stale API metadata.
  */
 export async function syncPlaylists(
   organizationId: string,
@@ -198,7 +192,7 @@ export async function syncPlaylists(
         data: {
           title: p.title,
           description: p.description,
-          itemCount: p.itemCount,
+          itemCount: null,
           privacyStatus: p.privacyStatus,
           thumbnailUrl: p.thumbnailUrl,
           syncedAt: new Date(),
@@ -213,7 +207,7 @@ export async function syncPlaylists(
           youtubePlaylistId: p.youtubePlaylistId,
           title: p.title,
           description: p.description,
-          itemCount: p.itemCount,
+          itemCount: null,
           privacyStatus: p.privacyStatus,
           thumbnailUrl: p.thumbnailUrl,
         },
@@ -227,7 +221,16 @@ export async function syncPlaylists(
   for (const p of gone) {
     await db.playlist.update({
       where: { id: p.id },
-      data: { isAllowed: false, isDefault: false },
+      data: {
+        title: "(playlist unavailable)",
+        description: null,
+        itemCount: null,
+        privacyStatus: null,
+        thumbnailUrl: null,
+        isAllowed: false,
+        isDefault: false,
+        syncedAt: new Date(),
+      },
     });
   }
 
@@ -238,6 +241,67 @@ export async function syncPlaylists(
     disappeared: gone.length,
   });
   return { added, updated, disappeared: gone.length };
+}
+
+export async function refreshStoredYouTubeData(
+  organizationId: string,
+  channelDbId: string,
+): Promise<{ added: number; updated: number; disappeared: number }> {
+  const remote = await fetchMyChannel(organizationId);
+  const channel = await db.youTubeChannel.findUnique({ where: { id: channelDbId } });
+  if (!channel || channel.organizationId !== organizationId) throw Errors.notFound("YouTube channel");
+  if (channel.youtubeChannelId !== remote.channelId) {
+    throw Errors.conflict("The connected Google account now points to a different YouTube channel. Reconnect and confirm it before publishing.");
+  }
+
+  await db.youTubeChannel.update({
+    where: { id: channel.id },
+    data: {
+      title: remote.title,
+      description: remote.description,
+      customUrl: remote.customUrl,
+      thumbnailUrl: remote.thumbnailUrl,
+      uploadsPlaylistId: remote.uploadsPlaylistId,
+      subscriberCount: null,
+      videoCount: null,
+      syncedAt: new Date(),
+    },
+  });
+  return syncPlaylists(organizationId, channel.id);
+}
+
+export async function maintainStoredYouTubeData(): Promise<{
+  refreshed: number;
+  deleted: number;
+  failed: number;
+}> {
+  const now = Date.now();
+  const refreshBefore = new Date(now - 28 * 24 * 60 * 60 * 1000);
+  const deleteBefore = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const stale = await db.youTubeChannel.findMany({ where: { syncedAt: { lt: refreshBefore } } });
+  let refreshed = 0;
+  let deleted = 0;
+  let failed = 0;
+
+  for (const channel of stale) {
+    try {
+      await refreshStoredYouTubeData(channel.organizationId, channel.id);
+      refreshed++;
+    } catch (error) {
+      failed++;
+      logger.warn("stored YouTube data refresh failed", {
+        organizationId: channel.organizationId,
+        channelId: channel.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (channel.syncedAt < deleteBefore) {
+        await db.youTubeChannel.delete({ where: { id: channel.id } });
+        deleted++;
+      }
+    }
+  }
+
+  return { refreshed, deleted, failed };
 }
 
 // ---------------------------------------------------------------------------

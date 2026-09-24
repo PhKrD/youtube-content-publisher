@@ -7,7 +7,7 @@ export default function PrivacyPolicyPage() {
   return (
     <>
       <h1 className="text-xl font-semibold tracking-tight text-ink">Privacy policy</h1>
-      <p className="mt-1.5 text-xs text-ink-faint">Last updated 16 September 2026</p>
+      <p className="mt-1.5 text-xs text-ink-faint">Last updated 25 September 2026</p>
 
       <div className="mt-6 space-y-6 text-sm leading-relaxed text-ink-soft">
         <p>
@@ -143,10 +143,16 @@ export default function PrivacyPolicyPage() {
             How long it is kept, and how to remove it
           </h2>
           <p className="mt-2">
-            Content and audit records are kept until an administrator deletes them, so
-            that the publishing history stays accountable. Data is not kept
-            indefinitely without purpose: when an account is removed, its personal
-            details are deleted.
+            Submission and audit records are retained for the publishing workflow and
+            accountability. Unpublished submissions can be deleted; published records are
+            archived so the app retains an accurate record of actions it performed. Uploaded
+            Drive files can be deleted after publication.
+          </p>
+          <p className="mt-3">
+            YouTube channel and playlist metadata obtained through the YouTube API is refreshed
+            before it becomes 30 days old. If it cannot be refreshed by 30 days, it is deleted.
+            The app does not request, store, or display YouTube channel subscriber counts, video
+            counts, playlist item counts, analytics, or other YouTube statistics.
           </p>
           <p className="mt-3">
             Separately from this app&rsquo;s own deletion process, you can revoke this

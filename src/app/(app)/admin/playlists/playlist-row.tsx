@@ -14,7 +14,6 @@ export function PlaylistRow({
     id: string;
     title: string;
     youtubePlaylistId: string;
-    itemCount: number;
     privacyStatus: string | null;
     isAllowed: boolean;
     isDefault: boolean;
@@ -55,8 +54,7 @@ export function PlaylistRow({
           {playlist.youtubePlaylistId}
         </p>
         <p className="text-xs text-ink-soft">
-          {playlist.itemCount} video{playlist.itemCount === 1 ? "" : "s"} on YouTube
-          {playlist.privacyStatus ? ` · ${playlist.privacyStatus}` : ""}
+          {playlist.privacyStatus ?? "Privacy not reported"}
           {playlist.submissionCount > 0
             ? ` · ${playlist.submissionCount} submission${playlist.submissionCount === 1 ? "" : "s"} here`
             : ""}

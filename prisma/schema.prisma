@@ -418,7 +418,7 @@ model Playlist {
   youtubePlaylistId String
   title             String
   description       String? @db.Text
-  itemCount         Int     @default(0)
+  itemCount         Int?
   privacyStatus     String?
   thumbnailUrl      String?
 

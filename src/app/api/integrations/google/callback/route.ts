@@ -158,8 +158,8 @@ export const GET = route(async (request) => {
           customUrl: channel.customUrl,
           thumbnailUrl: channel.thumbnailUrl,
           uploadsPlaylistId: channel.uploadsPlaylistId,
-          subscriberCount: channel.subscriberCount ? BigInt(channel.subscriberCount) : null,
-          videoCount: channel.videoCount ? BigInt(channel.videoCount) : null,
+          subscriberCount: null,
+          videoCount: null,
           // NOT confirmed. An admin must explicitly tick the box before this
           // channel can ever be published to (Section 9).
           isDefault: true,
@@ -171,8 +171,8 @@ export const GET = route(async (request) => {
           customUrl: channel.customUrl,
           thumbnailUrl: channel.thumbnailUrl,
           uploadsPlaylistId: channel.uploadsPlaylistId,
-          subscriberCount: channel.subscriberCount ? BigInt(channel.subscriberCount) : null,
-          videoCount: channel.videoCount ? BigInt(channel.videoCount) : null,
+          subscriberCount: null,
+          videoCount: null,
           syncedAt: new Date(),
         },
       });

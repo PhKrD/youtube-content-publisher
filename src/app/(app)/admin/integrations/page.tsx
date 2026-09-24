@@ -274,8 +274,6 @@ export default async function IntegrationsPage({
                       youtubeChannelId: c.youtubeChannelId,
                       customUrl: c.customUrl,
                       thumbnailUrl: c.thumbnailUrl,
-                      subscriberCount: c.subscriberCount ? Number(c.subscriberCount) : null,
-                      videoCount: c.videoCount ? Number(c.videoCount) : null,
                       confirmedAt: c.confirmedAt?.toISOString() ?? null,
                     }}
                   />
