@@ -413,28 +413,43 @@ async function stepVerify(ctx: JobContext): Promise<StepResult> {
     });
   }
 
-  if (status.uploadStatus === "rejected") {
+  if (
+    status.uploadStatus === "rejected" ||
+    status.uploadStatus === "failed" ||
+    status.processingStatus === "failed" ||
+    status.processingStatus === "terminated"
+  ) {
     await upsertPublication(ctx, {
       uploadStatus: status.uploadStatus,
+      processingStatus: status.processingStatus,
       rejectionReason: status.rejectionReason,
       privacyStatus: status.privacyStatus,
     });
     throw new AppError({
       code: "YOUTUBE_REJECTED",
-      userMessage: `YouTube rejected this video${
+      userMessage: `YouTube could not process this video${
         status.rejectionReason ? ` (${status.rejectionReason})` : ""
-      }. It will not be published. The file is still safe in Google Drive.`,
+      }. It was not published. The original file is still safe in Google Drive.`,
       terminal: true,
     });
   }
 
   await upsertPublication(ctx, {
-    verifiedAt: new Date(),
     uploadStatus: status.uploadStatus,
     processingStatus: status.processingStatus,
     privacyStatus: status.privacyStatus,
   });
 
+  if (status.processingStatus !== "succeeded") {
+    throw new AppError({
+      code: "YOUTUBE_UNAVAILABLE",
+      userMessage: "The upload is complete and YouTube is still processing the video. It will be checked again automatically.",
+      retryable: true,
+      retryAfterSeconds: 60,
+    });
+  }
+
+  await upsertPublication(ctx, { verifiedAt: new Date() });
   await finalise(ctx);
   return { status: "completed" };
 }

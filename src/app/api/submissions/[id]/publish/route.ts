@@ -10,6 +10,7 @@ import {
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
+import { getLongUploadsStatus } from "@/lib/google/youtube";
 import { assertPublishingAllowed } from "@/lib/publishing/engine";
 import { enqueuePublish, getJobForSubmission, isActiveJob } from "@/lib/publishing/queue";
 import { buildValidationReport, persistRenderedMetadata, submissionInclude } from "@/lib/submissions";
@@ -101,6 +102,16 @@ export const POST = route(async (request, { params }: Params) => {
       report.errors[0]?.message ?? "This submission is not ready to publish.",
       report.errors[0]?.field,
     );
+  }
+
+  const video = submission.mediaFiles.find((file) => file.kind === "VIDEO");
+  if ((video?.durationSeconds ?? 0) > 15 * 60) {
+    const longUploadsStatus = await getLongUploadsStatus(principal.organizationId);
+    if (longUploadsStatus !== "allowed") {
+      throw Errors.conflict(
+        "This video is longer than 15 minutes, but the connected YouTube channel is not enabled for long uploads. Verify the channel in YouTube Studio, then publish again.",
+      );
+    }
   }
 
   // Re-freeze metadata immediately before publishing so YouTube receives

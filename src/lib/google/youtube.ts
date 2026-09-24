@@ -119,6 +119,16 @@ export async function fetchMyChannel(organizationId: string): Promise<ChannelInf
   };
 }
 
+export async function getLongUploadsStatus(organizationId: string): Promise<string | null> {
+  const { youtube } = await api(organizationId);
+  try {
+    const res = await youtube.channels.list({ part: ["status"], mine: true, maxResults: 1 });
+    return res.data.items?.[0]?.status?.longUploadsStatus ?? null;
+  } catch (err) {
+    throw mapGoogleError(err, "youtube");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Playlists (Section 20)
 // ---------------------------------------------------------------------------
