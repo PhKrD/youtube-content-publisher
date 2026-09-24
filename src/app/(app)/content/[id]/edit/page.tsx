@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { canEditSubmission, requireOrganization, requirePrincipalPage } from "@/lib/authz";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
 import { canPublish } from "@/lib/authz";
+import { getEditorSettings } from "@/lib/org-settings";
 import { PageHeader } from "@/components/ui/misc";
 import { StatusBadge } from "@/components/ui/badge";
 import { ContentEditor, type EditorVariable } from "@/components/content/content-editor";
@@ -82,7 +83,10 @@ export default async function EditContentPage({
     }),
   ]);
 
-  const { report, rendered } = await buildValidationReport(submission, organization, principal);
+  const [{ report, rendered }, { contentFields }] = await Promise.all([
+    buildValidationReport(submission, organization, principal),
+    getEditorSettings(principal.organizationId),
+  ]);
 
   const video = submission.mediaFiles.find((m) => m.kind === MediaKind.VIDEO) ?? null;
   const thumbnail = submission.mediaFiles.find((m) => m.kind === MediaKind.THUMBNAIL) ?? null;
@@ -175,7 +179,9 @@ export default async function EditContentPage({
               driveWebViewLink: m.driveWebViewLink,
             })),
         }}
+        fields={contentFields}
         initial={{
+          postText: submission.postText,
           program: submission.program ?? "",
           topic: submission.topic ?? "",
           speaker: submission.speaker ?? "",
@@ -195,6 +201,7 @@ export default async function EditContentPage({
           title: rendered.title.text,
           description: rendered.description.text,
           tags: rendered.tags.tags,
+          postDefault: rendered.post.defaultText,
         }}
         initialValidation={report}
       />

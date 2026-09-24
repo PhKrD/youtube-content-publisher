@@ -375,6 +375,28 @@ export async function downloadRange(
   return buf;
 }
 
+/**
+ * Opens a whole Drive file as a stream, for relaying small files (post images)
+ * to the browser. The caller must authorise access first.
+ */
+export async function openFileStream(
+  organizationId: string,
+  fileId: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const { accessToken } = await client(organizationId);
+  const res = await fetch(`${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => "");
+    throw mapGoogleError(
+      { response: { status: res.status, data: safeJson(body) }, message: body.slice(0, 500) },
+      "drive",
+    );
+  }
+  return res.body;
+}
+
 /** Moves a file between workflow folders, mirroring submission state. */
 export async function moveFile(
   organizationId: string,

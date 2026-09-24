@@ -6,6 +6,8 @@ import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
 import { isPublishingEnabledGlobally } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { contentFieldsSchema, postTemplateSchema } from "@/lib/content-fields";
+import { SETTING_KEYS } from "@/lib/org-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +19,8 @@ const schema = z.object({
   maxVideoBytes: z.number().int().positive().max(1024 ** 4).optional(),
   maxThumbnailBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
   setupCompleted: z.boolean().optional(),
+  contentFields: contentFieldsSchema.optional(),
+  postTemplate: postTemplateSchema.optional(),
 });
 
 export const PATCH = route(async (request) => {
@@ -26,6 +30,23 @@ export const PATCH = route(async (request) => {
   const before = await db.organization.findUniqueOrThrow({
     where: { id: principal.organizationId },
   });
+
+  // Editor wording lives in the key/value Setting table.
+  const settingWrites = (
+    [
+      [SETTING_KEYS.contentFields, body.contentFields],
+      [SETTING_KEYS.postTemplate, body.postTemplate],
+    ] as const
+  )
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) =>
+      db.setting.upsert({
+        where: { organizationId_key: { organizationId: principal.organizationId, key } },
+        create: { organizationId: principal.organizationId, key, value: value!, updatedById: principal.id },
+        update: { value: value!, updatedById: principal.id },
+      }),
+    );
+  await Promise.all(settingWrites);
 
   const updated = await db.organization.update({
     where: { id: principal.organizationId },

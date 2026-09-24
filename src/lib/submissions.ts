@@ -5,8 +5,11 @@ import {
   renderDescription,
   renderTitle,
   resolveTags,
+  resolveValue,
   extractHashtags,
 } from "./templates";
+import { getEditorSettings } from "./org-settings";
+import { renderPostText } from "./post-pack";
 import { validateSubmission, type ValidationInput, type ValidationReport } from "./validation";
 import { analyseScopes } from "./google/scopes";
 import { getIntegration } from "./google/client";
@@ -56,6 +59,12 @@ export interface RenderedSubmission {
   description: ReturnType<typeof renderDescription>;
   tags: ReturnType<typeof resolveTags>;
   missingMandatoryHashtags: string[];
+  post: {
+    /** The organisation's default post text for this submission. */
+    defaultText: string;
+    /** What will actually be posted: the contributor's text, or the default. */
+    text: string;
+  };
 }
 
 /**
@@ -105,10 +114,31 @@ export async function renderSubmission(
       )
     : renderDescription("{{MAIN_DESCRIPTION}}", [], merged);
 
-  const mandatoryGroups = await db.tagGroup.findMany({
-    where: { organizationId: submission.organizationId, isMandatory: true, isActive: true },
-  });
+  const [mandatoryGroups, settings] = await Promise.all([
+    db.tagGroup.findMany({
+      where: { organizationId: submission.organizationId, isMandatory: true, isActive: true },
+    }),
+    getEditorSettings(submission.organizationId),
+  ]);
   const mandatoryTags = mandatoryGroups.flatMap((g) => g.tags);
+
+  // Post text sees everything the templates see, with locked values applied
+  // exactly as they are for the description.
+  const postValues: Record<string, string> = Object.fromEntries(
+    Object.entries(merged).map(([k, v]) => [k, v === null || v === undefined ? "" : String(v)]),
+  );
+  for (const v of [
+    ...(submission.titleTemplate?.variables ?? []),
+    ...(submission.descriptionTemplate?.variables ?? []),
+  ]) {
+    postValues[v.key] = resolveValue(v, merged).value;
+  }
+  postValues.TITLE = effectiveTitle.text;
+  if (submission.publication?.youtubeUrl) postValues.VIDEO_URL = submission.publication.youtubeUrl;
+  const post = {
+    defaultText: renderPostText(settings.postTemplate, postValues),
+    text: renderPostText(submission.postText ?? settings.postTemplate, postValues),
+  };
 
   const tags = resolveTags(submission.tags, mandatoryTags);
 
@@ -126,6 +156,7 @@ export async function renderSubmission(
     description,
     tags,
     missingMandatoryHashtags: findMissingHashtags(description.text, requiredHashtags),
+    post,
   };
 }
 
@@ -135,7 +166,10 @@ export async function buildValidationReport(
   organization: Organization,
   principal: Principal,
 ): Promise<{ report: ValidationReport; rendered: RenderedSubmission }> {
-  const rendered = await renderSubmission(submission);
+  const [rendered, settings] = await Promise.all([
+    renderSubmission(submission),
+    getEditorSettings(submission.organizationId),
+  ]);
 
   const video = submission.mediaFiles.find((m) => m.kind === MediaKind.VIDEO);
   const thumbnail = submission.mediaFiles.find((m) => m.kind === MediaKind.THUMBNAIL);
@@ -209,6 +243,8 @@ export async function buildValidationReport(
       program: submission.program,
       topic: submission.topic,
       speaker: submission.speaker,
+      programLabel: settings.contentFields.program.label,
+      programHidden: settings.contentFields.program.hidden,
     },
     schedule: { mode: submission.publishMode, at: submission.scheduledAt },
     integration: {

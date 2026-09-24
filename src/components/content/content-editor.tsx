@@ -6,10 +6,12 @@ import {
   CheckCircle2,
   Eye,
   Lock,
+  RotateCcw,
   Save,
   Send,
   Sparkles,
 } from "lucide-react";
+import { POST_TEMPLATE_MAX, type ContentFieldsConfig } from "@/lib/content-fields";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,7 +48,11 @@ export interface EditorProps {
   tagGroups: { id: string; name: string; tags: string[]; isMandatory: boolean }[];
   variables: EditorVariable[];
   media: { video: ExistingMedia | null; thumbnail: ExistingMedia | null; images: ExistingMedia[] };
+  /** The organisation's wording for the content-information fields. */
+  fields: ContentFieldsConfig;
   initial: {
+    /** Null = use the organisation's default post text. */
+    postText: string | null;
     program: string;
     topic: string;
     speaker: string;
@@ -62,7 +68,7 @@ export interface EditorProps {
     tags: string[];
     madeForKids: boolean;
   };
-  initialPreview: { title: string; description: string; tags: string[] };
+  initialPreview: { title: string; description: string; tags: string[]; postDefault: string };
   initialValidation: ValidationReport;
 }
 
@@ -74,6 +80,7 @@ interface PatchResponse {
     descriptionLength: number;
     tags: string[];
     reAddedTags: string[];
+    postDefault: string;
   };
   validation: ValidationReport;
   status: string;
@@ -150,6 +157,8 @@ export function ContentEditor(props: EditorProps) {
               : null,
             tags: patch.tags ?? form.tags,
             madeForKids: patch.madeForKids ?? form.madeForKids,
+            // `??` would turn an explicit reset (null) back into the old text.
+            postText: "postText" in patch ? patch.postText : form.postText,
           }),
         });
 
@@ -160,6 +169,7 @@ export function ContentEditor(props: EditorProps) {
           title: body.preview.title,
           description: body.preview.description,
           tags: body.preview.tags,
+          postDefault: body.preview.postDefault,
         });
         setValidation(body.validation);
         setSavedAt(new Date());
@@ -282,7 +292,8 @@ export function ContentEditor(props: EditorProps) {
 
             <div data-field-anchor="images">
               <p className="mb-2 text-sm font-medium text-ink">
-                Images <span className="font-normal text-ink-faint">(optional)</span>
+                Images for the YouTube post{" "}
+                <span className="font-normal text-ink-faint">(optional)</span>
               </p>
               <div className="space-y-2">
                 {props.media.images.map((img) => (
@@ -302,7 +313,7 @@ export function ContentEditor(props: EditorProps) {
                   submissionId={props.submissionId}
                   kind="SUPPORTING_IMAGE"
                   label="Add an image"
-                  description="Posters, slides or photos. JPEG, PNG or WebP, up to 25 MB. Saved to Google Drive with the video — not published to YouTube."
+                  description="Photos or posters to post alongside the video. JPEG, PNG or WebP, up to 25 MB each."
                   accept="image/jpeg,image/png,image/webp"
                   onChanged={() => router.refresh()}
                 />
@@ -317,50 +328,64 @@ export function ContentEditor(props: EditorProps) {
             <CardTitle>Content information</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="Programme" required htmlFor="field-program">
-              <Input
-                id="field-program"
-                value={form.program}
-                onChange={(e) => update({ program: e.target.value })}
-                placeholder="Bhagavad Gita Workshop"
-              />
-            </Field>
+            {!props.fields.program.hidden && (
+              <Field label={props.fields.program.label} required htmlFor="field-program">
+                <Input
+                  id="field-program"
+                  value={form.program}
+                  onChange={(e) => update({ program: e.target.value })}
+                  placeholder={props.fields.program.placeholder}
+                />
+              </Field>
+            )}
 
-            <Field label="Topic" required htmlFor="field-topic">
-              <Input
-                id="field-topic"
-                value={form.topic}
-                onChange={(e) => update({ topic: e.target.value })}
-                placeholder="Who Am I?"
-              />
-            </Field>
+            {!props.fields.topic.hidden && (
+              <Field label={props.fields.topic.label} required htmlFor="field-topic">
+                <Input
+                  id="field-topic"
+                  value={form.topic}
+                  onChange={(e) => update({ topic: e.target.value })}
+                  placeholder={props.fields.topic.placeholder}
+                />
+              </Field>
+            )}
 
-            <Field label="Speaker" required htmlFor="field-speaker">
-              <Input
-                id="field-speaker"
-                value={form.speaker}
-                onChange={(e) => update({ speaker: e.target.value })}
-                placeholder="Name of the speaker"
-              />
-            </Field>
+            {!props.fields.speaker.hidden && (
+              <Field label={props.fields.speaker.label} required htmlFor="field-speaker">
+                <Input
+                  id="field-speaker"
+                  value={form.speaker}
+                  onChange={(e) => update({ speaker: e.target.value })}
+                  placeholder={props.fields.speaker.placeholder}
+                />
+              </Field>
+            )}
 
-            <Field label="Date of the programme" htmlFor="field-recordedOn">
-              <Input
-                id="field-recordedOn"
-                type="date"
-                value={form.recordedOn}
-                onChange={(e) => update({ recordedOn: e.target.value })}
-              />
-            </Field>
+            {!props.fields.recordedOn.hidden && (
+              <Field label={props.fields.recordedOn.label} htmlFor="field-recordedOn">
+                <Input
+                  id="field-recordedOn"
+                  type="date"
+                  value={form.recordedOn}
+                  onChange={(e) => update({ recordedOn: e.target.value })}
+                />
+              </Field>
+            )}
 
-            <Field label="Location" htmlFor="field-location" className="sm:col-span-2">
-              <Input
-                id="field-location"
-                value={form.location}
-                onChange={(e) => update({ location: e.target.value })}
-                placeholder="Temple hall"
-              />
-            </Field>
+            {!props.fields.location.hidden && (
+              <Field
+                label={props.fields.location.label}
+                htmlFor="field-location"
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="field-location"
+                  value={form.location}
+                  onChange={(e) => update({ location: e.target.value })}
+                  placeholder={props.fields.location.placeholder}
+                />
+              </Field>
+            )}
           </CardContent>
         </Card>
 
@@ -435,6 +460,40 @@ export function ContentEditor(props: EditorProps) {
                   ))}
                 </dl>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ============ COMPANION POST ============ */}
+        <Card>
+          <CardHeader>
+            <CardTitle>YouTube post</CardTitle>
+            <p className="mt-1 text-xs text-ink-soft">
+              Optional. Starts from your organisation&apos;s default text — change it if you like.
+              The images above are attached. After the video is published, the content page gives
+              you this text and the images ready to post.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Field
+              label="Post text"
+              htmlFor="field-postText"
+              hint={`${(form.postText ?? preview.postDefault).length}/${POST_TEMPLATE_MAX}`}
+              description="{{VIDEO_URL}} becomes the video link once it is published."
+            >
+              <Textarea
+                id="field-postText"
+                rows={5}
+                maxLength={POST_TEMPLATE_MAX}
+                value={form.postText ?? preview.postDefault}
+                onChange={(e) => update({ postText: e.target.value })}
+              />
+            </Field>
+            {form.postText !== null && form.postText !== preview.postDefault && (
+              <Button size="sm" variant="ghost" onClick={() => update({ postText: null })}>
+                <RotateCcw className="size-3.5" aria-hidden="true" />
+                Use the default text
+              </Button>
             )}
           </CardContent>
         </Card>

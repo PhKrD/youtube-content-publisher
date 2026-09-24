@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
+import { POST_TEMPLATE_MAX } from "@/lib/content-fields";
 import { SubmissionStatus } from "@/generated/prisma";
 
 export const runtime = "nodejs";
@@ -74,6 +75,8 @@ const updateSchema = z.object({
   scheduledAt: z.string().datetime().nullish(),
   tags: z.array(z.string().max(100)).max(80).optional(),
   madeForKids: z.boolean().optional(),
+  /** Companion post text; null returns to the organisation's default. */
+  postText: z.string().max(POST_TEMPLATE_MAX).nullish(),
 });
 
 /**
@@ -150,6 +153,7 @@ export const PATCH = route(async (request, { params }: Params) => {
           }),
       ...(body.tags !== undefined ? { tags: body.tags } : {}),
       ...(body.madeForKids !== undefined ? { madeForKids: body.madeForKids } : {}),
+      ...(body.postText !== undefined ? { postText: body.postText?.trim() ? body.postText : null } : {}),
       // Editing after "changes requested" returns it to the contributor's
       // own queue rather than leaving it flagged.
       ...(existing.status === SubmissionStatus.CHANGES_REQUESTED
@@ -182,6 +186,7 @@ export const PATCH = route(async (request, { params }: Params) => {
       tags: rendered.tags.tags,
       droppedTags: rendered.tags.dropped,
       reAddedTags: rendered.tags.reAdded,
+      postDefault: rendered.post.defaultText,
     },
     validation: report,
     status: updated.status,

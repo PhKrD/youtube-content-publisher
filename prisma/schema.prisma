@@ -596,6 +596,14 @@ model Submission {
   /// only if the org permits it).
   titleOverride String? @db.Text
 
+  // --- companion YouTube post ---
+  /// The YouTube API cannot create posts, so the app prepares the text and a
+  /// person posts it. Null means "use the organisation's default post text".
+  postText       String?   @db.Text
+  /// Recorded by hand, since the app cannot confirm the post exists.
+  postPostedAt   DateTime?
+  postPostedById String?
+
   // --- YouTube target ---
   channelId       String?
   playlistId      String?

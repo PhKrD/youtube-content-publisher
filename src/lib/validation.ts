@@ -62,7 +62,14 @@ export interface ValidationInput {
   tags: { tags: string[]; totalChars: number };
   missingMandatoryHashtags: string[];
   playlist: { selected: boolean; allowed: boolean; title?: string };
-  contentInfo: { program?: string | null; topic?: string | null; speaker?: string | null };
+  contentInfo: {
+    program?: string | null;
+    topic?: string | null;
+    speaker?: string | null;
+    /** The organisation's wording for the programme field, and whether it is shown. */
+    programLabel?: string;
+    programHidden?: boolean;
+  };
   schedule: { mode: "NOW" | "SCHEDULED"; at?: Date | null };
   integration: { connected: boolean; channelConfirmed: boolean; scopesOk: boolean };
   permissions: { canPublish: boolean };
@@ -334,14 +341,17 @@ export function validateSubmission(input: ValidationInput): ValidationReport {
   }
 
   // ---- content information ----
-  add({
-    id: "content.program",
-    label: "Programme provided",
-    ok: Boolean(input.contentInfo.program?.trim()),
-    severity: "warning",
-    field: "program",
-    message: "Adding the programme makes this much easier to find later.",
-  });
+  if (!input.contentInfo.programHidden) {
+    const label = input.contentInfo.programLabel ?? "Programme";
+    add({
+      id: "content.program",
+      label: `${label} provided`,
+      ok: Boolean(input.contentInfo.program?.trim()),
+      severity: "warning",
+      field: "program",
+      message: `Adding the ${label.toLowerCase()} makes this much easier to find later.`,
+    });
+  }
 
   // ---- schedule ----
   if (input.schedule.mode === "SCHEDULED") {

@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronRight,
   FileText,
+  FormInput,
   ListVideo,
   Plug,
   Rocket,
@@ -78,6 +79,14 @@ export default async function AdminPage() {
       description: "Title and description templates, and locked sections",
       status: templateCount > 0 ? "ok" : "error",
       value: `${templateCount} description template${templateCount === 1 ? "" : "s"}`,
+    },
+    {
+      href: "/admin/content-form",
+      icon: FormInput,
+      title: "Content form & post",
+      description: "Field names in your own words, and the default YouTube post text",
+      status: "neutral",
+      value: "",
     },
     {
       href: "/admin/tags",

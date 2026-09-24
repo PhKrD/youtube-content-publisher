@@ -12,6 +12,7 @@ import {
 import { db } from "@/lib/db";
 import {
   canEditSubmission,
+  canPublish,
   canPublishSubmission,
   canRetryPublish,
   canReviewSubmission,
@@ -19,6 +20,8 @@ import {
   requirePrincipalPage,
 } from "@/lib/authz";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
+import { getEditorSettings } from "@/lib/org-settings";
+import { PostPack } from "@/components/content/post-pack";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -66,7 +69,16 @@ export default async function ContentDetailPage({
   if (!isOwner && !isReviewerOrAdmin) notFound();
 
   const organization = await requireOrganization(principal);
-  const { report, rendered } = await buildValidationReport(submission, organization, principal);
+  const [{ report, rendered }, { contentFields }, postedBy] = await Promise.all([
+    buildValidationReport(submission, organization, principal),
+    getEditorSettings(principal.organizationId),
+    submission.postPostedById
+      ? db.user.findUnique({
+          where: { id: submission.postPostedById },
+          select: { name: true, email: true },
+        })
+      : Promise.resolve(null),
+  ]);
 
   const approvalRequired = organization.approvalMode === ApprovalMode.APPROVAL_REQUIRED;
   const video = submission.mediaFiles.find((m) => m.kind === MediaKind.VIDEO);
@@ -214,10 +226,23 @@ export default async function ContentDetailPage({
                 <DetailRow label="Tags">
                   {rendered.tags.tags.length > 0 ? rendered.tags.tags.join(", ") : "None"}
                 </DetailRow>
-                <DetailRow label="Programme">{submission.program ?? "—"}</DetailRow>
-                <DetailRow label="Topic">{submission.topic ?? "—"}</DetailRow>
-                <DetailRow label="Speaker">{submission.speaker ?? "—"}</DetailRow>
-                <DetailRow label="Recorded on">{formatDate(submission.recordedOn)}</DetailRow>
+                {!contentFields.program.hidden && (
+                  <DetailRow label={contentFields.program.label}>{submission.program ?? "—"}</DetailRow>
+                )}
+                {!contentFields.topic.hidden && (
+                  <DetailRow label={contentFields.topic.label}>{submission.topic ?? "—"}</DetailRow>
+                )}
+                {!contentFields.speaker.hidden && (
+                  <DetailRow label={contentFields.speaker.label}>{submission.speaker ?? "—"}</DetailRow>
+                )}
+                {!contentFields.recordedOn.hidden && (
+                  <DetailRow label={contentFields.recordedOn.label}>
+                    {formatDate(submission.recordedOn)}
+                  </DetailRow>
+                )}
+                {!contentFields.location.hidden && (
+                  <DetailRow label={contentFields.location.label}>{submission.location ?? "—"}</DetailRow>
+                )}
                 <DetailRow label="Description">
                   <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2 font-sans text-[13px] leading-relaxed">
                     {submission.computedDescription || rendered.description.text || "—"}
@@ -311,6 +336,19 @@ export default async function ContentDetailPage({
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {(rendered.post.text.trim() !== "" || images.length > 0) && (
+            <PostPack
+              submissionId={id}
+              text={rendered.post.text}
+              images={images.map((img) => ({ id: img.id, name: img.originalFilename }))}
+              published={Boolean(submission.publication?.youtubeUrl)}
+              channelId={submission.channel?.youtubeChannelId ?? null}
+              postedAt={submission.postPostedAt?.toISOString() ?? null}
+              postedBy={postedBy ? (postedBy.name ?? postedBy.email) : null}
+              canMarkPosted={canPublish(principal)}
+            />
           )}
 
           {submission.status !== SubmissionStatus.PUBLISHED && (
