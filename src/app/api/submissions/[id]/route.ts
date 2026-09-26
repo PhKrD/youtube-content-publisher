@@ -5,7 +5,11 @@ import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
 import { deleteFile } from "@/lib/google/drive";
-import { buildValidationReport, submissionInclude } from "@/lib/submissions";
+import {
+  buildValidationReport,
+  findTemplatesForProgram,
+  submissionInclude,
+} from "@/lib/submissions";
 import { POST_TEMPLATE_MAX } from "@/lib/content-fields";
 import { SubmissionStatus } from "@/generated/prisma";
 
@@ -127,10 +131,20 @@ export const PATCH = route(async (request, { params }: Params) => {
     }
   }
 
+  // A different programme means a different pair of templates.
+  const programChanged = body.program && body.program !== existing.program;
+  const templates = programChanged
+    ? await findTemplatesForProgram(principal.organizationId, body.program!)
+    : null;
+
   const updated = await db.submission.update({
     where: { id },
     data: {
-      ...(body.program !== undefined ? { program: body.program } : {}),
+      ...(body.program ? { program: body.program } : {}),
+      ...(templates?.titleTemplate ? { titleTemplateId: templates.titleTemplate.id } : {}),
+      ...(templates?.descriptionTemplate
+        ? { descriptionTemplateId: templates.descriptionTemplate.id }
+        : {}),
       ...(body.topic !== undefined ? { topic: body.topic } : {}),
       ...(body.speaker !== undefined ? { speaker: body.speaker } : {}),
       ...(body.location !== undefined ? { location: body.location } : {}),
@@ -193,6 +207,8 @@ export const PATCH = route(async (request, { params }: Params) => {
     },
     validation: report,
     status: updated.status,
+    /** The editor must reload its fields: the templates were swapped. */
+    templatesChanged: Boolean(programChanged),
   });
 });
 

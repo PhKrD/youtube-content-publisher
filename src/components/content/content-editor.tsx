@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { POST_TEMPLATE_MAX, type ContentFieldsConfig } from "@/lib/content-fields";
+import { PROGRAMS, type ProgramKey } from "@/lib/programs";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,7 +54,7 @@ export interface EditorProps {
   initial: {
     /** Null = use the organisation's default post text. */
     postText: string | null;
-    program: "FFL" | "PITRU_PAKSHA" | "OTHERS";
+    program: ProgramKey;
     topic: string;
     speaker: string;
     location: string;
@@ -97,6 +98,7 @@ interface PatchResponse {
   };
   validation: ValidationReport;
   status: string;
+  templatesChanged?: boolean;
 }
 
 /**
@@ -140,7 +142,7 @@ export function ContentEditor(props: EditorProps) {
    * so those are filtered out of the template section.
    */
   const STRUCTURAL = useMemo(
-    () => new Set(["PROGRAM_NAME", "TOPIC", "SPEAKER_NAME", "DATE", "LOCATION"]),
+    () => new Set(["PROGRAM_NAME", "TOPIC", "SPEAKER_NAME", "DATE", "DATE_HI", "LOCATION"]),
     [],
   );
 
@@ -188,6 +190,8 @@ export function ContentEditor(props: EditorProps) {
         setValidation(body.validation);
         setSavedAt(new Date());
         dirty.current = false;
+        // New templates bring different fields; reload them from the server.
+        if (body.templatesChanged) router.refresh();
 
         if (body.preview.reAddedTags.length > 0 && !opts.silent) {
           toast.info("Required tags were added back", {
@@ -202,8 +206,16 @@ export function ContentEditor(props: EditorProps) {
         setSaving(false);
       }
     },
-    [form, props.submissionId],
+    [form, props.submissionId, router],
   );
+
+  /** Switching programme swaps templates, so save at once rather than debounced. */
+  const changeProgram = (program: ProgramKey) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setForm((f) => ({ ...f, program }));
+    void save({ program });
+  };
+  const usesField = (key: string) => props.variables.some((v) => v.key === key);
 
   /** Updates local state and schedules a debounced save. */
   const update = useCallback(
@@ -343,19 +355,42 @@ export function ContentEditor(props: EditorProps) {
             <CardTitle>Content information</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="Program" required htmlFor="field-program">
+            <Field
+              label={props.fields.program.label}
+              required
+              htmlFor="field-program"
+              description="Loads that programme's fixed title and description."
+            >
               <Select
                 id="field-program"
                 value={form.program}
-                onChange={(e) => update({ program: e.target.value as "FFL" | "PITRU_PAKSHA" | "OTHERS" })}
+                disabled={saving}
+                onChange={(e) => changeProgram(e.target.value as ProgramKey)}
               >
-                <option value="FFL">Food for Life</option>
-                <option value="PITRU_PAKSHA">Pitru Paksha</option>
-                <option value="OTHERS">Others</option>
+                {PROGRAMS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
               </Select>
             </Field>
 
-            {!props.fields.topic.hidden && (
+            {form.program === "OTHERS" && (
+              <Field label="Programme name" required htmlFor="field-program-name">
+                <Input
+                  id="field-program-name"
+                  value={form.templateValues.PROGRAM_NAME ?? ""}
+                  onChange={(e) =>
+                    update({
+                      templateValues: { ...form.templateValues, PROGRAM_NAME: e.target.value },
+                    })
+                  }
+                  placeholder={props.fields.program.placeholder}
+                />
+              </Field>
+            )}
+
+            {!props.fields.topic.hidden && usesField("TOPIC") && (
               <Field label={props.fields.topic.label} required htmlFor="field-topic">
                 <Input
                   id="field-topic"
@@ -366,7 +401,7 @@ export function ContentEditor(props: EditorProps) {
               </Field>
             )}
 
-            {!props.fields.speaker.hidden && (
+            {!props.fields.speaker.hidden && usesField("SPEAKER_NAME") && (
               <Field label={props.fields.speaker.label} required htmlFor="field-speaker">
                 <Input
                   id="field-speaker"

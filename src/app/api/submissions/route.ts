@@ -3,7 +3,7 @@ import { ok, parseJson, parseQuery, route } from "@/lib/api";
 import { canReview, requirePrincipal } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
-import { nextReference } from "@/lib/submissions";
+import { findTemplatesForProgram, nextReference } from "@/lib/submissions";
 import { ContentType, SubmissionStatus, Program, type Prisma } from "@/generated/prisma";
 
 export const runtime = "nodejs";
@@ -115,30 +115,9 @@ export const POST = route(async (request) => {
   const principal = await requirePrincipal();
   const body = await parseJson(request, createSchema);
 
-  const program: Program = body.program ?? "OTHERS";
-  const [titleTemplate, descriptionTemplate, defaultPlaylist, channel] = await Promise.all([
-    db.titleTemplate.findFirst({
-      where: { 
-        organizationId: principal.organizationId, 
-        isActive: true,
-        OR: [
-          { program: program },
-          { program: null },
-        ],
-      },
-      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
-    }),
-    db.descriptionTemplate.findFirst({
-      where: { 
-        organizationId: principal.organizationId, 
-        isActive: true,
-        OR: [
-          { program: program },
-          { program: null },
-        ],
-      },
-      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
-    }),
+  const program: Program = body.program ?? "FFL";
+  const [{ titleTemplate, descriptionTemplate }, defaultPlaylist, channel] = await Promise.all([
+    findTemplatesForProgram(principal.organizationId, program),
     db.playlist.findFirst({
       where: { organizationId: principal.organizationId, isAllowed: true },
       orderBy: { isDefault: "desc" },

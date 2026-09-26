@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePrincipalPage } from "@/lib/authz";
-import { nextReference } from "@/lib/submissions";
+import { findTemplatesForProgram, nextReference } from "@/lib/submissions";
 import { audit, AuditAction } from "@/lib/audit";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -25,32 +25,12 @@ export default async function NewContentPage() {
 
   // The one precondition that cannot be worked around: with no templates,
   // there is nothing to generate a title or description from.
-  // For now, default to OTHERS. In the future, this could be a URL param or user preference.
-  const program = "OTHERS" as const;
-  const [titleTemplate, descriptionTemplate] = await Promise.all([
-    db.titleTemplate.findFirst({
-      where: { 
-        organizationId: principal.organizationId, 
-        isActive: true,
-        OR: [
-          { program: program },
-          { program: null },
-        ],
-      },
-      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
-    }),
-    db.descriptionTemplate.findFirst({
-      where: { 
-        organizationId: principal.organizationId, 
-        isActive: true,
-        OR: [
-          { program: program },
-          { program: null },
-        ],
-      },
-      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
-    }),
-  ]);
+  // New content starts as Food For Life; the editor can switch programme.
+  const program = "FFL" as const;
+  const { titleTemplate, descriptionTemplate } = await findTemplatesForProgram(
+    principal.organizationId,
+    program,
+  );
 
   if (!titleTemplate || !descriptionTemplate) {
     return (
@@ -89,7 +69,7 @@ export default async function NewContentPage() {
       createdById: principal.id,
       reference: await nextReference(),
       status: SubmissionStatus.DRAFT,
-      program: "OTHERS",
+      program,
       titleTemplateId: titleTemplate.id,
       descriptionTemplateId: descriptionTemplate.id,
       playlistId: defaultPlaylist?.id ?? null,

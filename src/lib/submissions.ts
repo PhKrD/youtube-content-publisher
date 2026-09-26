@@ -10,6 +10,7 @@ import {
   extractHashtags,
 } from "./templates";
 import { getEditorSettings } from "./org-settings";
+import { programDisplayName } from "./programs";
 import { renderPostText } from "./post-pack";
 import { validateSubmission, type ValidationInput, type ValidationReport } from "./validation";
 import { analyseScopes } from "./google/scopes";
@@ -21,6 +22,7 @@ import {
   type MediaFile,
   type Organization,
   type Playlist,
+  type Program,
   type Submission,
   type TemplateVariable,
   type YouTubeChannel,
@@ -36,6 +38,25 @@ import {
  * what gets published. Locked template values are read from the template
  * definition here, so a tampered request body cannot influence them.
  */
+
+/**
+ * The title and description templates for a programme: its own templates if
+ * an admin has created them, otherwise the organisation's general ones.
+ */
+export async function findTemplatesForProgram(organizationId: string, program: Program) {
+  const pick = async <T>(find: (where: { program: Program | null }) => Promise<T | null>) =>
+    (await find({ program })) ?? (await find({ program: null }));
+  const base = { organizationId, isActive: true };
+  const [titleTemplate, descriptionTemplate] = await Promise.all([
+    pick((p) =>
+      db.titleTemplate.findFirst({ where: { ...base, ...p }, orderBy: { isDefault: "desc" } }),
+    ),
+    pick((p) =>
+      db.descriptionTemplate.findFirst({ where: { ...base, ...p }, orderBy: { isDefault: "desc" } }),
+    ),
+  ]);
+  return { titleTemplate, descriptionTemplate };
+}
 
 /** Allocates the next human-readable reference, e.g. SUB-000042. */
 export async function nextReference(): Promise<string> {
@@ -88,14 +109,23 @@ export async function renderSubmission(
   // Fill in the structured content fields so a template can reference them
   // without the contributor retyping them.
   const merged: Record<string, unknown> = {
-    PROGRAM_NAME: submission.program ?? "",
     TOPIC: submission.topic ?? "",
     SPEAKER_NAME: submission.speaker ?? "",
     LOCATION: submission.location ?? "",
     DATE: submission.recordedOn
       ? new Intl.DateTimeFormat("en-GB", { dateStyle: "long" }).format(submission.recordedOn)
       : "",
+    // e.g. २६/०९/२०२६. UTC because a date input is stored as UTC midnight.
+    DATE_HI: submission.recordedOn
+      ? new Intl.DateTimeFormat("hi-IN-u-nu-deva", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          timeZone: "UTC",
+        }).format(submission.recordedOn)
+      : "",
     ...values,
+    PROGRAM_NAME: programDisplayName(submission.program, values),
   };
 
   const title = submission.titleTemplate
@@ -265,7 +295,10 @@ export async function buildValidationReport(
       title: submission.playlist?.title,
     },
     contentInfo: {
-      program: submission.program,
+      program: programDisplayName(
+        submission.program,
+        (submission.templateValues ?? {}) as Record<string, unknown>,
+      ),
       topic: submission.topic,
       speaker: submission.speaker,
       programLabel: settings.contentFields.program.label,
