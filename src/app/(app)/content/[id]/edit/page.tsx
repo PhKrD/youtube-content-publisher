@@ -70,7 +70,7 @@ export default async function EditContentPage({
   }
 
   const organization = await requireOrganization(principal);
-  const [playlists, tagGroups] = await Promise.all([
+  const [playlists, tagGroups, languageTemplates] = await Promise.all([
     db.playlist.findMany({
       where: { organizationId: principal.organizationId },
       orderBy: [{ isDefault: "desc" }, { title: "asc" }],
@@ -81,7 +81,20 @@ export default async function EditContentPage({
       orderBy: { sortOrder: "asc" },
       select: { id: true, name: true, tags: true, isMandatory: true },
     }),
+    // Which languages this programme has templates for; the Hindi/English
+    // choice is only offered when there is more than one.
+    db.descriptionTemplate.findMany({
+      where: {
+        organizationId: principal.organizationId,
+        isActive: true,
+        program: submission.program,
+        language: { not: null },
+      },
+      select: { language: true },
+      distinct: ["language"],
+    }),
   ]);
+  const languages = languageTemplates.map((t) => t.language!);
 
   const [{ report, rendered }, { contentFields }] = await Promise.all([
     buildValidationReport(submission, organization, principal),
@@ -140,6 +153,7 @@ export default async function EditContentPage({
         categories={CATEGORIES}
         tagGroups={tagGroups}
         variables={variables}
+        languages={languages}
         media={{
           video: video
             ? {
@@ -182,7 +196,9 @@ export default async function EditContentPage({
         fields={contentFields}
         initial={{
           postText: submission.postText,
-          program: (submission.program as "FFL" | "PITRU_PAKSHA" | "OTHERS") ?? "OTHERS",
+          program: submission.program ?? "FFL",
+          language: submission.language,
+          descriptionOverride: submission.descriptionOverride,
           topic: submission.topic ?? "",
           speaker: submission.speaker ?? "",
           location: submission.location ?? "",

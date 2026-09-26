@@ -11,6 +11,7 @@ import {
   submissionInclude,
 } from "@/lib/submissions";
 import { POST_TEMPLATE_MAX } from "@/lib/content-fields";
+import { YOUTUBE_LIMITS } from "@/lib/templates";
 import { SubmissionStatus } from "@/generated/prisma";
 
 export const runtime = "nodejs";
@@ -67,6 +68,9 @@ export const GET = route(async (_request, { params }: Params) => {
 
 const updateSchema = z.object({
   program: z.enum(["FFL", "PITRU_PAKSHA", "OTHERS"]).nullish(),
+  language: z.enum(["HI", "EN"]).optional(),
+  /** Hand-edited full description; null returns to the template. */
+  descriptionOverride: z.string().max(YOUTUBE_LIMITS.descriptionMaxChars).nullish(),
   topic: z.string().max(300).nullish(),
   speaker: z.string().max(200).nullish(),
   location: z.string().max(200).nullish(),
@@ -131,20 +135,29 @@ export const PATCH = route(async (request, { params }: Params) => {
     }
   }
 
-  // A different programme means a different pair of templates.
-  const programChanged = body.program && body.program !== existing.program;
+  // A different programme or language means a different pair of templates,
+  // and a hand-edited description written for the old one no longer applies.
+  const program = body.program ?? existing.program ?? "FFL";
+  const language = body.language ?? existing.language;
+  const programChanged = program !== existing.program || language !== existing.language;
   const templates = programChanged
-    ? await findTemplatesForProgram(principal.organizationId, body.program!)
+    ? await findTemplatesForProgram(principal.organizationId, program, language)
     : null;
 
   const updated = await db.submission.update({
     where: { id },
     data: {
-      ...(body.program ? { program: body.program } : {}),
+      program,
+      language,
       ...(templates?.titleTemplate ? { titleTemplateId: templates.titleTemplate.id } : {}),
       ...(templates?.descriptionTemplate
         ? { descriptionTemplateId: templates.descriptionTemplate.id }
         : {}),
+      ...(programChanged
+        ? { descriptionOverride: null }
+        : body.descriptionOverride !== undefined
+          ? { descriptionOverride: body.descriptionOverride?.trim() ? body.descriptionOverride : null }
+          : {}),
       ...(body.topic !== undefined ? { topic: body.topic } : {}),
       ...(body.speaker !== undefined ? { speaker: body.speaker } : {}),
       ...(body.location !== undefined ? { location: body.location } : {}),

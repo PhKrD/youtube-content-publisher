@@ -6,12 +6,14 @@ import {
   CheckCircle2,
   Eye,
   Lock,
+  RotateCcw,
   Save,
   Send,
   Sparkles,
 } from "lucide-react";
 import { type ContentFieldsConfig } from "@/lib/content-fields";
 import { PROGRAMS, type ProgramKey } from "@/lib/programs";
+import { YOUTUBE_LIMITS } from "@/lib/templates";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,12 +50,17 @@ export interface EditorProps {
   tagGroups: { id: string; name: string; tags: string[]; isMandatory: boolean }[];
   variables: EditorVariable[];
   media: { video: ExistingMedia | null; thumbnail: ExistingMedia | null; images: ExistingMedia[] };
+  /** Languages the current programme has templates for. */
+  languages: ("HI" | "EN")[];
   /** The organisation's wording for the content-information fields. */
   fields: ContentFieldsConfig;
   initial: {
     /** Null = use the organisation's default post text. */
     postText: string | null;
     program: ProgramKey;
+    language: "HI" | "EN";
+    /** Null = use the template's description. */
+    descriptionOverride: string | null;
     topic: string;
     speaker: string;
     location: string;
@@ -153,7 +160,10 @@ export function ContentEditor(props: EditorProps) {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            program: patch.program ?? form.program ?? "OTHERS",
+            program: patch.program ?? form.program ?? "FFL",
+            language: patch.language ?? form.language,
+            descriptionOverride:
+              "descriptionOverride" in patch ? patch.descriptionOverride : form.descriptionOverride,
             topic: patch.topic ?? form.topic ?? null,
             speaker: patch.speaker ?? form.speaker ?? null,
             location: patch.location ?? form.location ?? null,
@@ -208,11 +218,22 @@ export function ContentEditor(props: EditorProps) {
     [form, props.submissionId, router],
   );
 
-  /** Switching programme swaps templates, so save at once rather than debounced. */
-  const changeProgram = (program: ProgramKey) => {
+  /**
+   * Switching programme or language swaps templates, so save at once rather
+   * than debounced. A hand-edited description was written for the old
+   * template, so it is dropped — after asking.
+   */
+  const changeTemplates = (patch: { program?: ProgramKey; language?: "HI" | "EN" }) => {
+    if (
+      form.descriptionOverride !== null &&
+      !window.confirm("This replaces your edited description with the new template's text. Continue?")
+    ) {
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    setForm((f) => ({ ...f, program }));
-    void save({ program });
+    const full = { ...patch, descriptionOverride: null };
+    setForm((f) => ({ ...f, ...full }));
+    void save(full);
   };
   const usesField = (key: string) => props.variables.some((v) => v.key === key);
 
@@ -364,7 +385,7 @@ export function ContentEditor(props: EditorProps) {
                 id="field-program"
                 value={form.program}
                 disabled={saving}
-                onChange={(e) => changeProgram(e.target.value as ProgramKey)}
+                onChange={(e) => changeTemplates({ program: e.target.value as ProgramKey })}
               >
                 {PROGRAMS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -373,6 +394,20 @@ export function ContentEditor(props: EditorProps) {
                 ))}
               </Select>
             </Field>
+
+            {props.languages.length > 1 && (
+              <Field label="Announcement language" required htmlFor="field-language">
+                <Select
+                  id="field-language"
+                  value={form.language}
+                  disabled={saving}
+                  onChange={(e) => changeTemplates({ language: e.target.value as "HI" | "EN" })}
+                >
+                  <option value="HI">Hindi</option>
+                  <option value="EN">English</option>
+                </Select>
+              </Field>
+            )}
 
             {form.program === "OTHERS" && (
               <Field label="Programme name" required htmlFor="field-program-name">
@@ -510,6 +545,38 @@ export function ContentEditor(props: EditorProps) {
                   ))}
                 </dl>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ============ FULL DESCRIPTION ============ */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Full description</CardTitle>
+            <p className="mt-1 text-xs text-ink-soft">
+              Built from the fields above. Change the wording here only if this video needs it.
+              Once edited, the fields above no longer update this text.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Field
+              label="Description sent to YouTube"
+              htmlFor="field-descriptionOverride"
+              hint={`${[...(form.descriptionOverride ?? preview.description)].length}/${YOUTUBE_LIMITS.descriptionMaxChars}`}
+            >
+              <Textarea
+                id="field-descriptionOverride"
+                rows={16}
+                maxLength={YOUTUBE_LIMITS.descriptionMaxChars}
+                value={form.descriptionOverride ?? preview.description}
+                onChange={(e) => update({ descriptionOverride: e.target.value })}
+              />
+            </Field>
+            {form.descriptionOverride !== null && (
+              <Button size="sm" variant="ghost" onClick={() => update({ descriptionOverride: null })}>
+                <RotateCcw className="size-3.5" aria-hidden="true" />
+                Go back to the template text
+              </Button>
             )}
           </CardContent>
         </Card>

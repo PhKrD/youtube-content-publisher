@@ -159,6 +159,11 @@ enum Program {
   OTHERS
 }
 
+enum AnnouncementLanguage {
+  HI
+  EN
+}
+
 // -----------------------------------------------------------------------------
 // Tenancy & configuration
 // -----------------------------------------------------------------------------
@@ -479,6 +484,8 @@ model TitleTemplate {
 
   /// Associate this template with a specific program. Null means it's a general template.
   program Program?
+  /// Language of the announcement. Null means it serves either language.
+  language AnnouncementLanguage?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -505,6 +512,8 @@ model DescriptionTemplate {
 
   /// Associate this template with a specific program. Null means it's a general template.
   program Program?
+  /// Language of the announcement. Null means it serves either language.
+  language AnnouncementLanguage?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -592,6 +601,8 @@ model Submission {
 
   // --- content information (Section 13) ---
   program    Program?
+  /// Picks the Hindi or English version of the programme's templates.
+  language   AnnouncementLanguage @default(HI)
   topic      String?
   speaker    String?
   recordedOn DateTime?
@@ -609,6 +620,9 @@ model Submission {
   /// Set when the contributor overrides the generated title by hand (allowed
   /// only if the org permits it).
   titleOverride String? @db.Text
+  /// The whole description, hand-edited for this one video. Null means use
+  /// the template. Cleared when the programme or language changes.
+  descriptionOverride String? @db.Text
 
   // --- companion YouTube post ---
   /// The YouTube API cannot create posts, so the app prepares the text and a

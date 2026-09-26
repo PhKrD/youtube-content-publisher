@@ -23,6 +23,7 @@ import {
   type Organization,
   type Playlist,
   type Program,
+  type AnnouncementLanguage,
   type Submission,
   type TemplateVariable,
   type YouTubeChannel,
@@ -40,12 +41,29 @@ import {
  */
 
 /**
- * The title and description templates for a programme: its own templates if
- * an admin has created them, otherwise the organisation's general ones.
+ * The title and description templates for a programme and language, most
+ * specific first: this programme in this language, this programme in any
+ * language, then the organisation's general templates.
  */
-export async function findTemplatesForProgram(organizationId: string, program: Program) {
-  const pick = async <T>(find: (where: { program: Program | null }) => Promise<T | null>) =>
-    (await find({ program })) ?? (await find({ program: null }));
+export async function findTemplatesForProgram(
+  organizationId: string,
+  program: Program,
+  language: AnnouncementLanguage = "HI",
+) {
+  type Where = { program: Program | null; language?: AnnouncementLanguage | null };
+  const candidates: Where[] = [
+    { program, language },
+    { program, language: null },
+    { program },
+    { program: null },
+  ];
+  const pick = async <T>(find: (where: Where) => Promise<T | null>) => {
+    for (const where of candidates) {
+      const found = await find(where);
+      if (found) return found;
+    }
+    return null;
+  };
   const base = { organizationId, isActive: true };
   const [titleTemplate, descriptionTemplate] = await Promise.all([
     pick((p) =>
@@ -74,6 +92,16 @@ export type SubmissionWithRelations = Submission & {
   publication: YouTubePublication | null;
   titleTemplate: ({ variables: TemplateVariable[] } & { pattern: string; maxLength: number }) | null;
   descriptionTemplate: ({ variables: TemplateVariable[] } & { body: string }) | null;
+};
+
+const DESCRIPTION_OVERRIDE_VAR = {
+  key: "DESCRIPTION",
+  label: "Description",
+  required: true,
+  isLocked: false,
+  lockedValue: null,
+  defaultValue: null,
+  maxLength: null,
 };
 
 export interface RenderedSubmission {
@@ -142,13 +170,18 @@ export async function renderSubmission(
     ? renderTitle("{{TITLE}}", [], { TITLE: submission.titleOverride })
     : title;
 
-  const description = submission.descriptionTemplate
-    ? renderDescription(
-        submission.descriptionTemplate.body,
-        submission.descriptionTemplate.variables,
-        merged,
-      )
-    : renderDescription("{{MAIN_DESCRIPTION}}", [], merged);
+  // A hand-edited description replaces the template for this video only.
+  const description = submission.descriptionOverride
+    ? renderDescription("{{DESCRIPTION}}", [DESCRIPTION_OVERRIDE_VAR], {
+        DESCRIPTION: submission.descriptionOverride,
+      })
+    : submission.descriptionTemplate
+      ? renderDescription(
+          submission.descriptionTemplate.body,
+          submission.descriptionTemplate.variables,
+          merged,
+        )
+      : renderDescription("{{MAIN_DESCRIPTION}}", [], merged);
 
   // Generate placeholder versions for preview
   const titleWithPlaceholders = submission.titleTemplate
