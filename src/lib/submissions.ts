@@ -4,6 +4,7 @@ import {
   findMissingHashtags,
   renderDescription,
   renderTitle,
+  renderTemplateWithPlaceholders,
   resolveTags,
   resolveValue,
   extractHashtags,
@@ -65,6 +66,11 @@ export interface RenderedSubmission {
     /** What will actually be posted: the contributor's text, or the default. */
     text: string;
   };
+  /** Version with placeholders visible (e.g., [SPEAKER] instead of actual name) */
+  withPlaceholders: {
+    title: string;
+    description: string;
+  };
 }
 
 /**
@@ -114,6 +120,21 @@ export async function renderSubmission(
       )
     : renderDescription("{{MAIN_DESCRIPTION}}", [], merged);
 
+  // Generate placeholder versions for preview
+  const titleWithPlaceholders = submission.titleTemplate
+    ? renderTemplateWithPlaceholders(
+        submission.titleTemplate.pattern,
+        submission.titleTemplate.variables,
+      )
+    : "[TITLE]";
+
+  const descriptionWithPlaceholders = submission.descriptionTemplate
+    ? renderTemplateWithPlaceholders(
+        submission.descriptionTemplate.body,
+        submission.descriptionTemplate.variables,
+      )
+    : "[MAIN_DESCRIPTION]";
+
   const [mandatoryGroups, settings] = await Promise.all([
     db.tagGroup.findMany({
       where: { organizationId: submission.organizationId, isMandatory: true, isActive: true },
@@ -157,6 +178,10 @@ export async function renderSubmission(
     tags,
     missingMandatoryHashtags: findMissingHashtags(description.text, requiredHashtags),
     post,
+    withPlaceholders: {
+      title: titleWithPlaceholders,
+      description: descriptionWithPlaceholders,
+    },
   };
 }
 

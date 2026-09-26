@@ -202,6 +202,7 @@ export default async function EditContentPage({
           description: rendered.description.text,
           tags: rendered.tags.tags,
           postDefault: rendered.post.defaultText,
+          withPlaceholders: rendered.withPlaceholders,
         }}
         initialValidation={report}
       />

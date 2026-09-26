@@ -150,6 +150,31 @@ export function renderTemplate(
 }
 
 /**
+ * Renders a template with placeholders visible instead of values.
+ * Useful for showing which fields fill which parts of the text.
+ */
+export function renderTemplateWithPlaceholders(
+  body: string,
+  variables: VariableLike[],
+): string {
+  const byKey = new Map(variables.map((v) => [v.key, v]));
+  const usedKeys = new Set<string>();
+
+  let text = body.replace(PLACEHOLDER_RE, (_full, key: string) => {
+    const variable = byKey.get(key);
+    if (!variable) {
+      return `{{${key}}}`;
+    }
+    usedKeys.add(key);
+    // Show the placeholder in brackets instead of the value
+    return `[${key}]`;
+  });
+
+  text = tidyWhitespace(closeEmptyPlaceholderLines(text));
+  return text;
+}
+
+/**
  * Collapses the gaps left by removed placeholders.
  * Preserves intentional paragraph breaks (one blank line) but removes runs of
  * three or more newlines, and strips lines that became whitespace-only.

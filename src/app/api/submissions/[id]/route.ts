@@ -55,6 +55,7 @@ export const GET = route(async (_request, { params }: Params) => {
       tags: rendered.tags.tags,
       droppedTags: rendered.tags.dropped,
       reAddedTags: rendered.tags.reAdded,
+      withPlaceholders: rendered.withPlaceholders,
     },
     validation: report,
   });
@@ -188,6 +189,7 @@ export const PATCH = route(async (request, { params }: Params) => {
       droppedTags: rendered.tags.dropped,
       reAddedTags: rendered.tags.reAdded,
       postDefault: rendered.post.defaultText,
+      withPlaceholders: rendered.withPlaceholders,
     },
     validation: report,
     status: updated.status,
