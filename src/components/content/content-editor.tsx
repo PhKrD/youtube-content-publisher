@@ -121,7 +121,6 @@ export function ContentEditor(props: EditorProps) {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  const [showPlaceholders, setShowPlaceholders] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirty = useRef(false);
@@ -661,20 +660,9 @@ export function ContentEditor(props: EditorProps) {
 
         {/* ============ PREVIEW ============ */}
         <Card>
-          <CardHeader className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Eye className="size-4 text-ink-faint" aria-hidden="true" />
-              <CardTitle>Preview — exactly what YouTube will receive</CardTitle>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-ink-soft">
-              <input
-                type="checkbox"
-                checked={showPlaceholders}
-                onChange={(e) => setShowPlaceholders(e.target.checked)}
-                className="size-3.5 rounded border-line"
-              />
-              Show field names
-            </label>
+          <CardHeader className="flex items-center gap-2">
+            <Eye className="size-4 text-ink-faint" aria-hidden="true" />
+            <CardTitle>Preview — exactly what YouTube will receive</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -688,9 +676,7 @@ export function ContentEditor(props: EditorProps) {
                 </span>
               </p>
               <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm font-medium text-ink">
-                {showPlaceholders
-                  ? preview.withPlaceholders?.title || <span className="text-ink-faint">[TITLE]</span>
-                  : preview.title || <span className="text-ink-faint">Fill in the fields above…</span>}
+                {preview.title || <span className="text-ink-faint">Fill in the fields above…</span>}
               </p>
             </div>
 
@@ -702,9 +688,7 @@ export function ContentEditor(props: EditorProps) {
                 </span>
               </p>
               <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2 font-sans text-[13px] leading-relaxed text-ink">
-                {showPlaceholders
-                  ? preview.withPlaceholders?.description || "[MAIN_DESCRIPTION]"
-                  : preview.description || "…"}
+                {preview.description || "…"}
               </pre>
             </div>
           </CardContent>
