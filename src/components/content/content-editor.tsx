@@ -6,12 +6,11 @@ import {
   CheckCircle2,
   Eye,
   Lock,
-  RotateCcw,
   Save,
   Send,
   Sparkles,
 } from "lucide-react";
-import { POST_TEMPLATE_MAX, type ContentFieldsConfig } from "@/lib/content-fields";
+import { type ContentFieldsConfig } from "@/lib/content-fields";
 import { PROGRAMS, type ProgramKey } from "@/lib/programs";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -516,7 +515,7 @@ export function ContentEditor(props: EditorProps) {
         </Card>
 
         {/* ============ COMPANION POST ============ */}
-        <Card>
+        {/* <Card>
           <CardHeader>
             <CardTitle>YouTube post</CardTitle>
             <p className="mt-1 text-xs text-ink-soft">
@@ -547,7 +546,7 @@ export function ContentEditor(props: EditorProps) {
               </Button>
             )}
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* ============ YOUTUBE ============ */}
         <Card>
