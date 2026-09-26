@@ -4,7 +4,7 @@ import { canReview, requirePrincipal } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { nextReference } from "@/lib/submissions";
-import { ContentType, SubmissionStatus, type Prisma } from "@/generated/prisma";
+import { ContentType, SubmissionStatus, Program, type Prisma } from "@/generated/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +43,6 @@ export const GET = route(async (request) => {
     ? {
         OR: [
           { computedTitle: { contains: search, mode: "insensitive" } },
-          { program: { contains: search, mode: "insensitive" } },
           { topic: { contains: search, mode: "insensitive" } },
           { speaker: { contains: search, mode: "insensitive" } },
           { reference: { contains: search, mode: "insensitive" } },
@@ -100,7 +99,7 @@ export const GET = route(async (request) => {
 
 const createSchema = z.object({
   contentType: z.enum(["VIDEO", "SHORT", "IMAGE", "COMMUNITY_POST"]).default("VIDEO"),
-  program: z.string().max(200).optional(),
+  program: z.enum(["FFL", "PITRU_PAKSHA", "OTHERS"]).optional(),
   topic: z.string().max(300).optional(),
   speaker: z.string().max(200).optional(),
 });
@@ -116,14 +115,29 @@ export const POST = route(async (request) => {
   const principal = await requirePrincipal();
   const body = await parseJson(request, createSchema);
 
+  const program: Program = body.program ?? "OTHERS";
   const [titleTemplate, descriptionTemplate, defaultPlaylist, channel] = await Promise.all([
     db.titleTemplate.findFirst({
-      where: { organizationId: principal.organizationId, isActive: true },
-      orderBy: { isDefault: "desc" },
+      where: { 
+        organizationId: principal.organizationId, 
+        isActive: true,
+        OR: [
+          { program: program },
+          { program: null },
+        ],
+      },
+      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
     }),
     db.descriptionTemplate.findFirst({
-      where: { organizationId: principal.organizationId, isActive: true },
-      orderBy: { isDefault: "desc" },
+      where: { 
+        organizationId: principal.organizationId, 
+        isActive: true,
+        OR: [
+          { program: program },
+          { program: null },
+        ],
+      },
+      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
     }),
     db.playlist.findFirst({
       where: { organizationId: principal.organizationId, isAllowed: true },
@@ -142,7 +156,7 @@ export const POST = route(async (request) => {
       reference: await nextReference(),
       contentType: body.contentType as ContentType,
       status: SubmissionStatus.DRAFT,
-      program: body.program ?? null,
+      program: program,
       topic: body.topic ?? null,
       speaker: body.speaker ?? null,
       titleTemplateId: titleTemplate?.id ?? null,

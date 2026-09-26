@@ -62,7 +62,7 @@ export const GET = route(async (_request, { params }: Params) => {
 });
 
 const updateSchema = z.object({
-  program: z.string().max(200).nullish(),
+  program: z.enum(["FFL", "PITRU_PAKSHA", "OTHERS"]).nullish(),
   topic: z.string().max(300).nullish(),
   speaker: z.string().max(200).nullish(),
   location: z.string().max(200).nullish(),

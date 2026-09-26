@@ -126,9 +126,6 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX "submission_title_trgm"
   ON "Submission" USING gin ("computedTitle" gin_trgm_ops);
 
-CREATE INDEX "submission_program_trgm"
-  ON "Submission" USING gin ("program" gin_trgm_ops);
-
 CREATE INDEX "submission_topic_trgm"
   ON "Submission" USING gin ("topic" gin_trgm_ops);
 

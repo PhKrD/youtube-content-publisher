@@ -25,14 +25,30 @@ export default async function NewContentPage() {
 
   // The one precondition that cannot be worked around: with no templates,
   // there is nothing to generate a title or description from.
+  // For now, default to OTHERS. In the future, this could be a URL param or user preference.
+  const program = "OTHERS" as const;
   const [titleTemplate, descriptionTemplate] = await Promise.all([
     db.titleTemplate.findFirst({
-      where: { organizationId: principal.organizationId, isActive: true },
-      orderBy: { isDefault: "desc" },
+      where: { 
+        organizationId: principal.organizationId, 
+        isActive: true,
+        OR: [
+          { program: program },
+          { program: null },
+        ],
+      },
+      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
     }),
     db.descriptionTemplate.findFirst({
-      where: { organizationId: principal.organizationId, isActive: true },
-      orderBy: { isDefault: "desc" },
+      where: { 
+        organizationId: principal.organizationId, 
+        isActive: true,
+        OR: [
+          { program: program },
+          { program: null },
+        ],
+      },
+      orderBy: [{ program: "desc" }, { isDefault: "desc" }],
     }),
   ]);
 
@@ -73,6 +89,7 @@ export default async function NewContentPage() {
       createdById: principal.id,
       reference: await nextReference(),
       status: SubmissionStatus.DRAFT,
+      program: "OTHERS",
       titleTemplateId: titleTemplate.id,
       descriptionTemplateId: descriptionTemplate.id,
       playlistId: defaultPlaylist?.id ?? null,

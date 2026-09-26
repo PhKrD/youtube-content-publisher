@@ -182,7 +182,7 @@ export default async function EditContentPage({
         fields={contentFields}
         initial={{
           postText: submission.postText,
-          program: submission.program ?? "",
+          program: (submission.program as "FFL" | "PITRU_PAKSHA" | "OTHERS") ?? "OTHERS",
           topic: submission.topic ?? "",
           speaker: submission.speaker ?? "",
           location: submission.location ?? "",

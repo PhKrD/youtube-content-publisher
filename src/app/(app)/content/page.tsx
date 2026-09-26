@@ -85,7 +85,6 @@ export default async function ContentLibraryPage({
       ? {
           OR: [
             { computedTitle: { contains: search, mode: "insensitive" } },
-            { program: { contains: search, mode: "insensitive" } },
             { topic: { contains: search, mode: "insensitive" } },
             { speaker: { contains: search, mode: "insensitive" } },
             { reference: { contains: search, mode: "insensitive" } },

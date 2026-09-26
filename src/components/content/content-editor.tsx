@@ -53,7 +53,7 @@ export interface EditorProps {
   initial: {
     /** Null = use the organisation's default post text. */
     postText: string | null;
-    program: string;
+    program: "FFL" | "PITRU_PAKSHA" | "OTHERS";
     topic: string;
     speaker: string;
     location: string;
@@ -152,7 +152,7 @@ export function ContentEditor(props: EditorProps) {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            program: patch.program ?? form.program ?? null,
+            program: patch.program ?? form.program ?? "OTHERS",
             topic: patch.topic ?? form.topic ?? null,
             speaker: patch.speaker ?? form.speaker ?? null,
             location: patch.location ?? form.location ?? null,
@@ -343,16 +343,17 @@ export function ContentEditor(props: EditorProps) {
             <CardTitle>Content information</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            {!props.fields.program.hidden && (
-              <Field label={props.fields.program.label} required htmlFor="field-program">
-                <Input
-                  id="field-program"
-                  value={form.program}
-                  onChange={(e) => update({ program: e.target.value })}
-                  placeholder={props.fields.program.placeholder}
-                />
-              </Field>
-            )}
+            <Field label="Program" required htmlFor="field-program">
+              <Select
+                id="field-program"
+                value={form.program}
+                onChange={(e) => update({ program: e.target.value as "FFL" | "PITRU_PAKSHA" | "OTHERS" })}
+              >
+                <option value="FFL">Food for Life</option>
+                <option value="PITRU_PAKSHA">Pitru Paksha</option>
+                <option value="OTHERS">Others</option>
+              </Select>
+            </Field>
 
             {!props.fields.topic.hidden && (
               <Field label={props.fields.topic.label} required htmlFor="field-topic">
