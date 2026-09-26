@@ -679,6 +679,11 @@ export function ContentEditor(props: EditorProps) {
               <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm font-medium text-ink">
                 {preview.title || <span className="text-ink-faint">Fill in the fields above…</span>}
               </p>
+              {preview.withPlaceholders?.title && (
+                <p className="mt-1 rounded-lg border border-dashed border-line px-3 py-1.5 font-mono text-[11px] text-ink-faint">
+                  {preview.withPlaceholders.title}
+                </p>
+              )}
             </div>
 
             <div>
@@ -691,6 +696,11 @@ export function ContentEditor(props: EditorProps) {
               <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2 font-sans text-[13px] leading-relaxed text-ink">
                 {preview.description || "…"}
               </pre>
+              {preview.withPlaceholders?.description && (
+                <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-dashed border-line px-3 py-1.5 font-mono text-[11px] leading-relaxed text-ink-faint">
+                  {preview.withPlaceholders.description}
+                </pre>
+              )}
             </div>
           </CardContent>
         </Card>
