@@ -304,7 +304,8 @@ export function ContentEditor(props: EditorProps) {
               />
             </div>
 
-            <div data-field-anchor="images">
+            {/* Images for the YouTube post section hidden per user request */}
+            {/* <div data-field-anchor="images">
               <p className="mb-2 text-sm font-medium text-ink">
                 Images for the YouTube post{" "}
                 <span className="font-normal text-ink-faint">(optional)</span>
@@ -332,7 +333,7 @@ export function ContentEditor(props: EditorProps) {
                   onChanged={() => router.refresh()}
                 />
               </div>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
 
