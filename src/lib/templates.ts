@@ -174,6 +174,50 @@ export function renderTemplateWithPlaceholders(
   return text;
 }
 
+export interface TemplatizeResult {
+  body: string;
+  /** Fields whose value no longer appears in the text; they are dropped. */
+  notFound: string[];
+  /** Fields whose value appears more than once; every copy becomes a placeholder. */
+  repeated: string[];
+}
+
+/**
+ * Turns one video's finished text back into a reusable template by replacing
+ * each field's current value with its {{PLACEHOLDER}}.
+ *
+ * Longest values first, so "Ratan Kumar Gupta" is not broken up by a shorter
+ * "Ratan". Matches only whole words: a value of "01" must not eat the "01" in
+ * "2026-01-15". Placeholders already in the text are left untouched.
+ */
+export function templatizeText(
+  text: string,
+  fields: { key: string; value: string }[],
+): TemplatizeResult {
+  const notFound: string[] = [];
+  const repeated: string[] = [];
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let body = text;
+  for (const { key, value } of [...fields]
+    .filter((f) => f.value.trim())
+    .sort((a, b) => b.value.trim().length - a.value.trim().length)) {
+    const re = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${escape(value.trim())}(?![\\p{L}\\p{N}\\p{M}])`, "gu");
+    let count = 0;
+    body = body
+      .split(PLACEHOLDER_RE_SPLIT)
+      .map((part) =>
+        part.startsWith("{{") ? part : part.replace(re, () => (count++, `{{${key}}}`)),
+      )
+      .join("");
+    if (count === 0) notFound.push(key);
+    if (count > 1) repeated.push(key);
+  }
+  return { body, notFound, repeated };
+}
+
+/** Splits text around existing placeholders, keeping them. */
+const PLACEHOLDER_RE_SPLIT = /(\{\{\s*[A-Z0-9_]+\s*\}\})/;
+
 /**
  * Collapses the gaps left by removed placeholders.
  * Preserves intentional paragraph breaks (one blank line) but removes runs of

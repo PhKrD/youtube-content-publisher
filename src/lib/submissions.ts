@@ -132,11 +132,17 @@ export interface RenderedSubmission {
 export async function renderSubmission(
   submission: SubmissionWithRelations,
 ): Promise<RenderedSubmission> {
-  const values = (submission.templateValues ?? {}) as Record<string, unknown>;
+  return renderSubmissionBody(submission, mergedTemplateValues(submission));
+}
 
-  // Fill in the structured content fields so a template can reference them
-  // without the contributor retyping them.
-  const merged: Record<string, unknown> = {
+/**
+ * Every value a template can reference: the contributor's field values plus
+ * the structured content fields, so a template can use them without the
+ * contributor retyping them.
+ */
+function mergedTemplateValues(submission: SubmissionWithRelations): Record<string, unknown> {
+  const values = (submission.templateValues ?? {}) as Record<string, unknown>;
+  return {
     TOPIC: submission.topic ?? "",
     SPEAKER_NAME: submission.speaker ?? "",
     LOCATION: submission.location ?? "",
@@ -155,7 +161,24 @@ export async function renderSubmission(
     ...values,
     PROGRAM_NAME: programDisplayName(submission.program, values),
   };
+}
 
+/**
+ * The value each description field currently has in this video's text, for
+ * turning an edited description back into a template.
+ */
+export function descriptionFieldValues(submission: SubmissionWithRelations) {
+  const merged = mergedTemplateValues(submission);
+  return (submission.descriptionTemplate?.variables ?? []).map((v) => ({
+    key: v.key,
+    value: resolveValue(v, merged).value,
+  }));
+}
+
+async function renderSubmissionBody(
+  submission: SubmissionWithRelations,
+  merged: Record<string, unknown>,
+): Promise<RenderedSubmission> {
   const title = submission.titleTemplate
     ? renderTitle(
         submission.titleTemplate.pattern,

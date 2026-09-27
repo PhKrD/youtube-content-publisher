@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { canEditSubmission, requireOrganization, requirePrincipalPage } from "@/lib/authz";
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
-import { canPublish } from "@/lib/authz";
+import { canPublish, isAdmin } from "@/lib/authz";
 import { getEditorSettings } from "@/lib/org-settings";
 import { PageHeader } from "@/components/ui/misc";
 import { StatusBadge } from "@/components/ui/badge";
@@ -146,6 +146,7 @@ export default async function EditContentPage({
         reference={submission.reference}
         status={submission.status}
         canPublish={canPublish(principal)}
+        isAdmin={isAdmin(principal)}
         approvalRequired={organization.approvalMode === ApprovalMode.APPROVAL_REQUIRED}
         channelTitle={submission.channel?.title ?? null}
         channelConfirmed={Boolean(submission.channel?.confirmedAt)}

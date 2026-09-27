@@ -42,6 +42,8 @@ export interface EditorProps {
   reference: string;
   status: string;
   canPublish: boolean;
+  /** Admins may save an edited description as the template. */
+  isAdmin: boolean;
   approvalRequired: boolean;
   channelTitle: string | null;
   channelConfirmed: boolean;
@@ -236,6 +238,46 @@ export function ContentEditor(props: EditorProps) {
     void save(full);
   };
   const usesField = (key: string) => props.variables.some((v) => v.key === key);
+
+  const [proposal, setProposal] = useState<{
+    templateName: string;
+    body: string;
+    notFound: string[];
+    repeated: string[];
+  } | null>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+
+  /** First call shows the proposed template; the confirmed call saves it. */
+  const saveAsTemplate = async (confirm: boolean) => {
+    setTemplateBusy(true);
+    try {
+      // The server works from the saved text, so flush any pending edit first.
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        await save({}, { silent: true });
+      }
+      const res = await fetch(`/api/submissions/${props.submissionId}/description-template`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error?.message ?? "Could not save the template.");
+      if (!confirm) {
+        setProposal(body);
+        return;
+      }
+      setProposal(null);
+      setForm((f) => ({ ...f, descriptionOverride: null }));
+      await save({ descriptionOverride: null }, { silent: true });
+      toast.success(`Saved. New videos will use this wording.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the template.");
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
 
   /** Updates local state and schedules a debounced save. */
   const update = useCallback(
@@ -572,11 +614,66 @@ export function ContentEditor(props: EditorProps) {
                 onChange={(e) => update({ descriptionOverride: e.target.value })}
               />
             </Field>
-            {form.descriptionOverride !== null && (
-              <Button size="sm" variant="ghost" onClick={() => update({ descriptionOverride: null })}>
-                <RotateCcw className="size-3.5" aria-hidden="true" />
-                Go back to the template text
-              </Button>
+            {form.descriptionOverride !== null && !proposal && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="ghost" onClick={() => update({ descriptionOverride: null })}>
+                  <RotateCcw className="size-3.5" aria-hidden="true" />
+                  Go back to the template text
+                </Button>
+                {props.isAdmin ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={templateBusy}
+                    onClick={() => void saveAsTemplate(false)}
+                  >
+                    <Save className="size-3.5" aria-hidden="true" />
+                    Save as template for future videos
+                  </Button>
+                ) : (
+                  <p className="text-xs text-ink-soft">
+                    To use this wording for every video, ask an administrator to save it as the
+                    template.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {proposal && (
+              <div className="space-y-3 rounded-lg border border-line bg-surface-muted p-3">
+                <p className="text-sm font-medium text-ink">
+                  Save as the &ldquo;{proposal.templateName}&rdquo; template?
+                </p>
+                <p className="text-xs text-ink-soft">
+                  This video&apos;s details have been replaced with fields in brackets, so each new
+                  video fills in its own. This changes the text for everyone, including drafts that
+                  use this template. Videos already published are not changed.
+                </p>
+                {proposal.notFound.length > 0 && (
+                  <Alert tone="warn" title="Some fields are no longer in the text">
+                    {proposal.notFound.join(", ")} will not appear in future descriptions. If you
+                    meant to keep them, cancel and put their current value back in the text.
+                  </Alert>
+                )}
+                {proposal.repeated.length > 0 && (
+                  <Alert tone="info" title="Check these carefully">
+                    The value of {proposal.repeated.join(", ")} appears more than once, so every
+                    copy became a field.
+                  </Alert>
+                )}
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-surface px-3 py-2 font-sans text-[13px] leading-relaxed">
+                  {proposal.body}
+                </pre>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={templateBusy} onClick={() => void saveAsTemplate(true)}>
+                    <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                    Save template
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setProposal(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
