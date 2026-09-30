@@ -151,6 +151,8 @@ enum TemplateInputType {
   DATE
   SELECT
   URL
+  /// "yes" when ticked, empty otherwise; meant for {{#if KEY}} blocks.
+  CHECKBOX
 }
 
 enum Program {

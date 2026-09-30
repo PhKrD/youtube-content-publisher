@@ -7,6 +7,7 @@ import { canEditSubmission, requireOrganization, requirePrincipalPage } from "@/
 import { buildValidationReport, submissionInclude } from "@/lib/submissions";
 import { canPublish, isAdmin } from "@/lib/authz";
 import { getEditorSettings } from "@/lib/org-settings";
+import { fieldConditions } from "@/lib/templates";
 import { PageHeader } from "@/components/ui/misc";
 import { StatusBadge } from "@/components/ui/badge";
 import { ContentEditor, type EditorVariable } from "@/components/content/content-editor";
@@ -104,8 +105,10 @@ export default async function EditContentPage({
   const video = submission.mediaFiles.find((m) => m.kind === MediaKind.VIDEO) ?? null;
   const thumbnail = submission.mediaFiles.find((m) => m.kind === MediaKind.THUMBNAIL) ?? null;
 
+  const conditions = fieldConditions(submission.descriptionTemplate?.body ?? "");
   const variables: EditorVariable[] = (submission.descriptionTemplate?.variables ?? []).map((v) => ({
     key: v.key,
+    showWhen: conditions.get(v.key) ?? [],
     label: v.label,
     helpText: v.helpText,
     inputType: v.inputType,

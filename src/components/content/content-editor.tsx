@@ -27,9 +27,11 @@ import { cn } from "@/lib/utils";
 
 export interface EditorVariable {
   key: string;
+  /** `{{#if}}` keys this field sits inside ("!KEY" = the else branch). */
+  showWhen: string[];
   label: string;
   helpText: string | null;
-  inputType: "TEXT" | "TEXTAREA" | "DATE" | "SELECT" | "URL";
+  inputType: "TEXT" | "TEXTAREA" | "DATE" | "SELECT" | "URL" | "CHECKBOX";
   required: boolean;
   isLocked: boolean;
   lockedValue: string | null;
@@ -150,8 +152,13 @@ export function ContentEditor(props: EditorProps) {
    * so those are filtered out of the template section.
    */
   const STRUCTURAL = useMemo(
-    () => new Set(["PROGRAM_NAME", "TOPIC", "SPEAKER_NAME", "DATE", "DATE_HI", "LOCATION"]),
+    () =>
+      new Set(["PROGRAM_NAME", "TOPIC", "SPEAKER_NAME", "DATE", "DATE_HI", "DATE_SHORT", "LOCATION"]),
     [],
+  );
+  /** The template's date field, if any; its label and help text describe the date picker. */
+  const dateVariable = props.variables.find((v) =>
+    ["DATE", "DATE_HI", "DATE_SHORT"].includes(v.key),
   );
 
   const save = useCallback(
@@ -238,6 +245,17 @@ export function ContentEditor(props: EditorProps) {
     void save(full);
   };
   const usesField = (key: string) => props.variables.some((v) => v.key === key);
+
+  /** Hides a field while a checkbox it depends on is set the other way. */
+  const checkboxKeys = new Set(
+    props.variables.filter((v) => v.inputType === "CHECKBOX").map((v) => v.key),
+  );
+  const isShown = (v: EditorVariable) =>
+    v.showWhen.every((cond) => {
+      const key = cond.replace(/^!/, "");
+      if (!checkboxKeys.has(key)) return true;
+      return (form.templateValues[key] === "yes") !== cond.startsWith("!");
+    });
 
   const [proposal, setProposal] = useState<{
     templateName: string;
@@ -489,7 +507,12 @@ export function ContentEditor(props: EditorProps) {
             )}
 
             {!props.fields.recordedOn.hidden && (
-              <Field label={props.fields.recordedOn.label} htmlFor="field-recordedOn">
+              <Field
+                label={dateVariable?.label ?? props.fields.recordedOn.label}
+                required={dateVariable?.required}
+                description={dateVariable?.helpText ?? undefined}
+                htmlFor="field-recordedOn"
+              >
                 <Input
                   id="field-recordedOn"
                   type="date"
@@ -499,7 +522,7 @@ export function ContentEditor(props: EditorProps) {
               </Field>
             )}
 
-            {!props.fields.location.hidden && (
+            {!props.fields.location.hidden && usesField("LOCATION") && (
               <Field
                 label={props.fields.location.label}
                 htmlFor="field-location"
@@ -526,8 +549,25 @@ export function ContentEditor(props: EditorProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             {editableVariables
-              .filter((v) => !STRUCTURAL.has(v.key))
-              .map((v) => (
+              .filter((v) => !STRUCTURAL.has(v.key) && isShown(v))
+              .map((v) =>
+                v.inputType === "CHECKBOX" ? (
+                  <Checkbox
+                    key={v.key}
+                    id={`field-var.${v.key}`}
+                    label={v.label}
+                    description={v.helpText ?? undefined}
+                    checked={form.templateValues[v.key] === "yes"}
+                    onChange={(e) =>
+                      update({
+                        templateValues: {
+                          ...form.templateValues,
+                          [v.key]: e.target.checked ? "yes" : "",
+                        },
+                      })
+                    }
+                  />
+                ) : (
                 <Field
                   key={v.key}
                   label={v.label}
@@ -540,7 +580,24 @@ export function ContentEditor(props: EditorProps) {
                       : undefined
                   }
                 >
-                  {v.inputType === "TEXTAREA" ? (
+                  {v.inputType === "SELECT" && Array.isArray(v.options) ? (
+                    <Select
+                      id={`field-var.${v.key}`}
+                      // The first option is the template's default.
+                      value={form.templateValues[v.key] || String(v.options[0] ?? "")}
+                      onChange={(e) =>
+                        update({
+                          templateValues: { ...form.templateValues, [v.key]: e.target.value },
+                        })
+                      }
+                    >
+                      {v.options.map((o) => (
+                        <option key={String(o)} value={String(o)}>
+                          {String(o)}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : v.inputType === "TEXTAREA" ? (
                     <Textarea
                       id={`field-var.${v.key}`}
                       rows={5}
@@ -566,7 +623,8 @@ export function ContentEditor(props: EditorProps) {
                     />
                   )}
                 </Field>
-              ))}
+                ),
+              )}
 
             {/* Locked sections are shown, read-only, so contributors can see
                 what will be published without being able to change it. */}

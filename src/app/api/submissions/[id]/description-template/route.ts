@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
 import { Errors } from "@/lib/errors";
 import { descriptionFieldValues } from "@/lib/submissions";
-import { extractPlaceholders, lintTemplate, templatizeText } from "@/lib/templates";
+import { extractPlaceholders, hasConditionals, lintTemplate, templatizeText } from "@/lib/templates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +36,12 @@ export const POST = route(async (request, { params }: Params) => {
   if (!template) throw Errors.conflict("This content has no description template to update.");
   if (!submission.descriptionOverride) {
     throw Errors.conflict("Edit the full description first, then save it as the template.");
+  }
+  // One video's text holds only one branch; saving it would drop the others.
+  if (hasConditionals(template.body)) {
+    throw Errors.conflict(
+      "This template has different wording for different cases (e.g. sponsored or not). Edit it in Settings → Templates instead.",
+    );
   }
 
   const result = templatizeText(submission.descriptionOverride, descriptionFieldValues(submission));

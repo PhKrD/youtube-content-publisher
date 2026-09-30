@@ -59,11 +59,67 @@ export interface RenderResult {
   unusedVariables: string[];
 }
 
+/**
+ * `{{#if KEY}}shown when KEY has a value{{else}}shown otherwise{{/if}}`.
+ * The body may not contain another `{{#if`, so each match is an innermost
+ * block and nesting is resolved by repeating until nothing changes.
+ */
+const CONDITIONAL_RE = /\{\{#if\s+([A-Z0-9_]+)\s*\}\}((?:(?!\{\{#if\s)[\s\S])*?)\{\{\/if\}\}/g;
+const ELSE_RE = /\{\{else\}\}/;
+
+/** True if the body uses `{{#if}}` blocks. */
+export function hasConditionals(body: string): boolean {
+  return /\{\{#if\s/.test(body);
+}
+
+/** Keeps the branch of each `{{#if}}` block that applies. */
+export function resolveConditionals(body: string, isSet: (key: string) => boolean): string {
+  let out = body;
+  for (let prev = ""; prev !== out; ) {
+    prev = out;
+    out = out.replace(CONDITIONAL_RE, (_full, key: string, inner: string) => {
+      const m = ELSE_RE.exec(inner);
+      const [yes, no] = m ? [inner.slice(0, m.index), inner.slice(m.index + m[0].length)] : [inner, ""];
+      return isSet(key) ? yes : no;
+    });
+  }
+  return out;
+}
+
+/**
+ * The `{{#if}}` keys each placeholder depends on: only those enclosing every
+ * one of its occurrences, with "!KEY" for an `{{else}}` branch. A placeholder
+ * used anywhere outside a block maps to []. Lets the editor hide fields that
+ * would not appear in the text.
+ */
+export function fieldConditions(body: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const stack: { key: string; inElse: boolean }[] = [];
+  const record = (key: string) => {
+    const conds = stack.map((s) => (s.inElse ? `!${s.key}` : s.key));
+    const prev = out.get(key);
+    out.set(key, prev ? prev.filter((c) => conds.includes(c)) : conds);
+  };
+  for (const m of body.matchAll(/\{\{\s*(#if\s+([A-Z0-9_]+)|else|\/if|([A-Z0-9_]+))\s*\}\}/g)) {
+    if (m[2]) {
+      record(m[2]);
+      stack.push({ key: m[2], inElse: false });
+    } else if (m[1] === "else") {
+      if (stack.length) stack[stack.length - 1].inElse = true;
+    } else if (m[1] === "/if") {
+      stack.pop();
+    } else if (m[3]) {
+      record(m[3]);
+    }
+  }
+  return out;
+}
+
 /** Every distinct placeholder in a template body, in order of appearance. */
 export function extractPlaceholders(body: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const m of body.matchAll(PLACEHOLDER_RE)) {
+  for (const m of body.matchAll(/\{\{\s*(?:#if\s+)?([A-Z0-9_]+)\s*\}\}/g)) {
     const key = m[1];
     if (!seen.has(key)) {
       seen.add(key);
@@ -114,9 +170,17 @@ export function renderTemplate(
   const byKey = new Map(variables.map((v) => [v.key, v]));
   const missing: RenderIssue[] = [];
   const unknownPlaceholders: string[] = [];
-  const usedKeys = new Set<string>();
+  const usedKeys = new Set(extractPlaceholders(body));
 
-  let text = body.replace(PLACEHOLDER_RE, (_full, key: string) => {
+  // Branches not taken are dropped first, so their required fields are not
+  // reported as missing.
+  const isSet = (key: string) => {
+    const variable = byKey.get(key);
+    const value = variable ? resolveValue(variable, submitted).value : submitted[key];
+    return value !== undefined && value !== null && String(value).trim() !== "";
+  };
+
+  let text = resolveConditionals(body, isSet).replace(PLACEHOLDER_RE, (_full, key: string) => {
     const variable = byKey.get(key);
     if (!variable) {
       unknownPlaceholders.push(key);
@@ -124,7 +188,6 @@ export function renderTemplate(
       // misconfigured template is obvious to the admin in preview.
       return `{{${key}}}`;
     }
-    usedKeys.add(key);
     const { value } = resolveValue(variable, submitted);
     if (!value) {
       if (variable.required) {
@@ -158,14 +221,13 @@ export function renderTemplateWithPlaceholders(
   variables: VariableLike[],
 ): string {
   const byKey = new Map(variables.map((v) => [v.key, v]));
-  const usedKeys = new Set<string>();
 
-  let text = body.replace(PLACEHOLDER_RE, (_full, key: string) => {
+  // Shows the fullest version: every optional block as if filled in.
+  let text = resolveConditionals(body, () => true).replace(PLACEHOLDER_RE, (_full, key: string) => {
     const variable = byKey.get(key);
     if (!variable) {
       return `{{${key}}}`;
     }
-    usedKeys.add(key);
     // Show the placeholder in brackets instead of the value
     return `[${key}]`;
   });
@@ -442,12 +504,20 @@ export function lintTemplate(body: string, variables: VariableLike[]): TemplateL
   }
   // A malformed placeholder is easy to typo and silently publishes as text.
   for (const m of body.matchAll(/\{\{[^}]*\}\}/g)) {
-    if (!/^\{\{\s*[A-Z0-9_]+\s*\}\}$/.test(m[0])) {
+    if (!/^\{\{\s*(?:#if\s+)?[A-Z0-9_]+\s*\}\}$|^\{\{(?:else|\/if)\}\}$/.test(m[0])) {
       issues.push({
         severity: "error",
         message: `"${m[0]}" is not a valid placeholder. Use uppercase letters, numbers and underscores, e.g. {{SPEAKER_NAME}}.`,
       });
     }
+  }
+  const opens = body.match(/\{\{#if\s/g)?.length ?? 0;
+  const closes = body.match(/\{\{\/if\}\}/g)?.length ?? 0;
+  if (opens !== closes) {
+    issues.push({
+      severity: "error",
+      message: `Every {{#if FIELD}} needs a matching {{/if}} (found ${opens} and ${closes}).`,
+    });
   }
   return issues;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractHashtags,
   extractPlaceholders,
+  fieldConditions,
   findMissingHashtags,
   lintTemplate,
   renderDescription,
@@ -313,5 +314,59 @@ describe("lintTemplate", () => {
 
   it("passes a well-formed template", () => {
     expect(lintTemplate("{{A}} and {{B}}", [v("A"), v("B")])).toEqual([]);
+  });
+});
+
+describe("{{#if}} blocks", () => {
+  const sponsor = v("SPONSOR", { required: false });
+  const occasion = v("OCCASION", { required: false });
+  const tpl =
+    "Seva{{#if SPONSOR}} | Sponsored by {{SPONSOR}}{{#if OCCASION}} for {{OCCASION}}{{/if}}{{else}} | Thanks to all{{/if}}";
+
+  it("uses the first branch when the field has a value", () => {
+    expect(renderTemplate(tpl, [sponsor, occasion], { SPONSOR: "K Anand" }).text).toBe(
+      "Seva | Sponsored by K Anand",
+    );
+  });
+
+  it("resolves nested blocks", () => {
+    expect(
+      renderTemplate(tpl, [sponsor, occasion], { SPONSOR: "K Anand", OCCASION: "Diwali" }).text,
+    ).toBe("Seva | Sponsored by K Anand for Diwali");
+  });
+
+  it("uses the else branch when the field is empty", () => {
+    expect(renderTemplate(tpl, [sponsor, occasion], { SPONSOR: "  " }).text).toBe(
+      "Seva | Thanks to all",
+    );
+  });
+
+  it("does not report required fields inside a branch not taken", () => {
+    const r = renderTemplate("{{#if S}}{{NAME}}{{/if}}", [v("S", { required: false }), v("NAME")], {});
+    expect(r.missing).toEqual([]);
+    expect(r.unusedVariables).toEqual([]);
+  });
+
+  it("finds the blocks each field depends on", () => {
+    const c = fieldConditions(
+      "{{DATE}}{{#if S}}{{NAME}}{{#if O}}{{O}} {{T}}{{/if}}{{else}}{{THANKS}}{{/if}}{{#if S}}{{NAME}}{{/if}}",
+    );
+    expect(Object.fromEntries(c)).toEqual({
+      DATE: [],
+      S: [],
+      NAME: ["S"],
+      O: ["S"],
+      T: ["S", "O"],
+      THANKS: ["!S"],
+    });
+  });
+
+  it("counts condition keys as placeholders", () => {
+    expect(extractPlaceholders("{{#if A}}{{B}}{{else}}x{{/if}}")).toEqual(["A", "B"]);
+  });
+
+  it("lints well-formed blocks cleanly and flags unbalanced ones", () => {
+    expect(lintTemplate("{{#if A}}{{A}}{{else}}-{{/if}}", [v("A")])).toEqual([]);
+    expect(lintTemplate("{{#if A}}{{A}}", [v("A")]).map((i) => i.severity)).toEqual(["error"]);
   });
 });

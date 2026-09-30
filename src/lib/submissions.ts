@@ -149,6 +149,15 @@ function mergedTemplateValues(submission: SubmissionWithRelations): Record<strin
     DATE: submission.recordedOn
       ? new Intl.DateTimeFormat("en-GB", { dateStyle: "long" }).format(submission.recordedOn)
       : "",
+    // e.g. 12 Nov 2023.
+    DATE_SHORT: submission.recordedOn
+      ? new Intl.DateTimeFormat("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          timeZone: "UTC",
+        }).format(submission.recordedOn)
+      : "",
     // e.g. २६/०९/२०२६. UTC because a date input is stored as UTC midnight.
     DATE_HI: submission.recordedOn
       ? new Intl.DateTimeFormat("hi-IN-u-nu-deva", {
