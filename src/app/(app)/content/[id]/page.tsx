@@ -267,7 +267,11 @@ export default async function ContentDetailPage({
                   video
                     ? {
                         name: video.originalFilename,
-                        meta: `${formatBytes(Number(video.sizeBytes))} · ${video.uploadState.toLowerCase()}`,
+                        meta: `${formatBytes(Number(video.sizeBytes))} · ${
+                          submission.status === "PUBLISHED" && !video.driveFileId
+                            ? "removed from Drive after publishing"
+                            : video.uploadState.toLowerCase()
+                        }`,
                         link: video.driveWebViewLink,
                       }
                     : null

@@ -2,7 +2,8 @@ import { db } from "../db";
 import { isPublishingEnabledGlobally } from "../env";
 import { AppError, Errors, toAppError } from "../errors";
 import { logger } from "../logger";
-import { downloadRange, getFileInfo, getFolderId, moveFile } from "../google/drive";
+import { audit, AuditAction } from "../audit";
+import { deleteFile, downloadRange, getFileInfo } from "../google/drive";
 import {
   addToPlaylist,
   createVideoUploadSession,
@@ -16,7 +17,6 @@ import {
 import { notify } from "../notifications";
 import { heartbeat, markFailed, markSucceeded, saveProgress } from "./queue";
 import {
-  DriveFolderKind,
   JobStep,
   MediaKind,
   NotificationType,
@@ -454,7 +454,7 @@ async function stepVerify(ctx: JobContext): Promise<StepResult> {
   return { status: "completed" };
 }
 
-/** Marks the submission published, notifies, and files the Drive copy. */
+/** Marks the submission published, notifies, and deletes the Drive copy. */
 async function finalise(ctx: JobContext): Promise<void> {
   const s = ctx.submission;
 
@@ -485,19 +485,32 @@ async function finalise(ctx: JobContext): Promise<void> {
     linkPath: `/content/${s.id}`,
   });
 
-  // Housekeeping only — never allowed to fail the publish.
-  try {
-    const published = await getFolderId(s.organizationId, DriveFolderKind.PUBLISHED);
-    for (const m of s.mediaFiles) {
-      if (m.driveFileId && m.kind === MediaKind.VIDEO) {
-        await moveFile(s.organizationId, m.driveFileId, published);
-      }
+  // YouTube has confirmed the video, so the Drive copy is deleted for good
+  // to free the storage. Housekeeping only — never allowed to fail the publish.
+  for (const m of s.mediaFiles) {
+    if (!m.driveFileId || m.kind !== MediaKind.VIDEO) continue;
+    try {
+      await deleteFile(s.organizationId, m.driveFileId);
+      await db.mediaFile.update({
+        where: { id: m.id },
+        data: { driveFileId: null, driveWebViewLink: null },
+      });
+      await audit({
+        organizationId: s.organizationId,
+        action: AuditAction.MEDIA_DELETED,
+        entityType: "MediaFile",
+        entityId: m.id,
+        submissionId: s.id,
+        driveFileId: m.driveFileId,
+        youtubeVideoId: s.publication?.youtubeVideoId,
+        newValue: { reason: "published" },
+      });
+    } catch (e) {
+      logger.warn("post-publish drive clean-up failed; file left in place", {
+        submissionId: s.id,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
-  } catch (e) {
-    logger.warn("post-publish drive filing failed", {
-      submissionId: s.id,
-      error: e instanceof Error ? e.message : String(e),
-    });
   }
 
   logger.info("submission published", {
