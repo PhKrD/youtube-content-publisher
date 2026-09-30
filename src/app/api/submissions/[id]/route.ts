@@ -9,6 +9,7 @@ import {
   buildValidationReport,
   findTemplatesForProgram,
   submissionInclude,
+  youtubeDefaultsForProgram,
 } from "@/lib/submissions";
 import { POST_TEMPLATE_MAX } from "@/lib/content-fields";
 import { YOUTUBE_LIMITS } from "@/lib/templates";
@@ -116,6 +117,16 @@ export const PATCH = route(async (request, { params }: Params) => {
     }
   }
 
+  // Switching programme loads that programme's YouTube settings, over
+  // whatever the editor sent.
+  const program = body.program ?? existing.program ?? "FFL";
+  const programDefaults =
+    program !== existing.program
+      ? await youtubeDefaultsForProgram(principal.organizationId, program)
+      : {};
+  Object.assign(body, programDefaults);
+  if (programDefaults.publishMode === "NOW") body.scheduledAt = null;
+
   const publishMode = body.publishMode ?? existing.publishMode;
   const scheduledAt =
     body.scheduledAt === undefined
@@ -137,7 +148,6 @@ export const PATCH = route(async (request, { params }: Params) => {
 
   // A different programme or language means a different pair of templates,
   // and a hand-edited description written for the old one no longer applies.
-  const program = body.program ?? existing.program ?? "FFL";
   const language = body.language ?? existing.language;
   const programChanged = program !== existing.program || language !== existing.language;
   const templates = programChanged
@@ -222,6 +232,17 @@ export const PATCH = route(async (request, { params }: Params) => {
     status: updated.status,
     /** The editor must reload its fields: the templates were swapped. */
     templatesChanged: Boolean(programChanged),
+    /** YouTube settings the server changed; the editor must adopt them. */
+    youtubeSettings: Object.keys(programDefaults).length
+      ? {
+          playlistId: updated.playlistId ?? "",
+          categoryId: updated.categoryId,
+          defaultLanguage: updated.defaultLanguage,
+          privacyStatus: updated.privacyStatus,
+          publishMode: updated.publishMode,
+          scheduledAt: "",
+        }
+      : undefined,
   });
 });
 

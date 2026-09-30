@@ -3,7 +3,7 @@ import { ok, parseJson, parseQuery, route } from "@/lib/api";
 import { canReview, requirePrincipal } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { audit, AuditAction } from "@/lib/audit";
-import { findTemplatesForProgram, nextReference } from "@/lib/submissions";
+import { findTemplatesForProgram, nextReference, youtubeDefaultsForProgram } from "@/lib/submissions";
 import { ContentType, SubmissionStatus, Program, type Prisma } from "@/generated/prisma";
 
 export const runtime = "nodejs";
@@ -116,7 +116,7 @@ export const POST = route(async (request) => {
   const body = await parseJson(request, createSchema);
 
   const program: Program = body.program ?? "FFL";
-  const [{ titleTemplate, descriptionTemplate }, defaultPlaylist, channel] = await Promise.all([
+  const [{ titleTemplate, descriptionTemplate }, defaultPlaylist, channel, programDefaults] = await Promise.all([
     findTemplatesForProgram(principal.organizationId, program),
     db.playlist.findFirst({
       where: { organizationId: principal.organizationId, isAllowed: true },
@@ -126,6 +126,7 @@ export const POST = route(async (request) => {
       where: { organizationId: principal.organizationId },
       orderBy: { isDefault: "desc" },
     }),
+    youtubeDefaultsForProgram(principal.organizationId, program),
   ]);
 
   const submission = await db.submission.create({
@@ -142,6 +143,7 @@ export const POST = route(async (request) => {
       descriptionTemplateId: descriptionTemplate?.id ?? null,
       playlistId: defaultPlaylist?.id ?? null,
       channelId: channel?.id ?? null,
+      ...programDefaults,
       tags: [],
       templateValues: {},
     },

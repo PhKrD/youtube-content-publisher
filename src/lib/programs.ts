@@ -12,6 +12,26 @@ export const PROGRAMS: { value: ProgramKey; label: string }[] = [
   { value: "OTHERS", label: "Others" },
 ];
 
+/** YouTube settings a new draft of this programme starts with. */
+export interface ProgramYouTubeDefaults {
+  /** Matched by YouTube id, so renaming the playlist does not break it. */
+  youtubePlaylistId?: string;
+  categoryId?: string;
+  defaultLanguage?: string;
+  privacyStatus?: "PRIVATE" | "UNLISTED" | "PUBLIC";
+  publishMode?: "NOW" | "SCHEDULED";
+}
+
+export const PROGRAM_YOUTUBE_DEFAULTS: Partial<Record<ProgramKey, ProgramYouTubeDefaults>> = {
+  FFL: {
+    youtubePlaylistId: "PLB8pRzb4sRCLYuYcVkzxLXrDUSjzhZKdF", // Food for Life - BCEC Pune
+    categoryId: "29", // Nonprofits & Activism
+    defaultLanguage: "en",
+    privacyStatus: "PUBLIC",
+    publishMode: "NOW",
+  },
+};
+
 /**
  * The text {{PROGRAM_NAME}} renders to. "Others" has no fixed name, so the
  * contributor types one, stored as templateValues.PROGRAM_NAME.

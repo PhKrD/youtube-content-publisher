@@ -109,6 +109,10 @@ interface PatchResponse {
   validation: ValidationReport;
   status: string;
   templatesChanged?: boolean;
+  youtubeSettings?: Pick<
+    EditorProps["initial"],
+    "playlistId" | "categoryId" | "defaultLanguage" | "privacyStatus" | "publishMode" | "scheduledAt"
+  >;
 }
 
 /**
@@ -206,6 +210,10 @@ export function ContentEditor(props: EditorProps) {
           withPlaceholders: body.preview.withPlaceholders,
         });
         setValidation(body.validation);
+        if (body.youtubeSettings) {
+          const settings = body.youtubeSettings;
+          setForm((f) => ({ ...f, ...settings }));
+        }
         setSavedAt(new Date());
         dirty.current = false;
         // New templates bring different fields; reload them from the server.

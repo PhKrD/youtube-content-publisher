@@ -10,7 +10,7 @@ import {
   extractHashtags,
 } from "./templates";
 import { getEditorSettings } from "./org-settings";
-import { programDisplayName } from "./programs";
+import { PROGRAM_YOUTUBE_DEFAULTS, programDisplayName } from "./programs";
 import { renderPostText } from "./post-pack";
 import { validateSubmission, type ValidationInput, type ValidationReport } from "./validation";
 import { analyseScopes } from "./google/scopes";
@@ -74,6 +74,21 @@ export async function findTemplatesForProgram(
     ),
   ]);
   return { titleTemplate, descriptionTemplate };
+}
+
+/**
+ * The programme's default YouTube settings as submission fields. The playlist
+ * is left out if it is missing or no longer allowed.
+ */
+export async function youtubeDefaultsForProgram(organizationId: string, program: Program) {
+  const { youtubePlaylistId, ...settings } = PROGRAM_YOUTUBE_DEFAULTS[program] ?? {};
+  const playlist = youtubePlaylistId
+    ? await db.playlist.findFirst({
+        where: { organizationId, youtubePlaylistId, isAllowed: true },
+        select: { id: true },
+      })
+    : null;
+  return { ...settings, ...(playlist ? { playlistId: playlist.id } : {}) };
 }
 
 /** Allocates the next human-readable reference, e.g. SUB-000042. */

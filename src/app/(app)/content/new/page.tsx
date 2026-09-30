@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePrincipalPage } from "@/lib/authz";
-import { findTemplatesForProgram, nextReference } from "@/lib/submissions";
+import { findTemplatesForProgram, nextReference, youtubeDefaultsForProgram } from "@/lib/submissions";
 import { audit, AuditAction } from "@/lib/audit";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ export default async function NewContentPage() {
     );
   }
 
-  const [defaultPlaylist, channel] = await Promise.all([
+  const [defaultPlaylist, channel, programDefaults] = await Promise.all([
     db.playlist.findFirst({
       where: { organizationId: principal.organizationId, isAllowed: true },
       orderBy: { isDefault: "desc" },
@@ -61,6 +61,7 @@ export default async function NewContentPage() {
       where: { organizationId: principal.organizationId },
       orderBy: { isDefault: "desc" },
     }),
+    youtubeDefaultsForProgram(principal.organizationId, program),
   ]);
 
   const submission = await db.submission.create({
@@ -74,6 +75,7 @@ export default async function NewContentPage() {
       descriptionTemplateId: descriptionTemplate.id,
       playlistId: defaultPlaylist?.id ?? null,
       channelId: channel?.id ?? null,
+      ...programDefaults,
       tags: [],
       templateValues: {},
     },
