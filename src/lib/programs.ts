@@ -4,11 +4,12 @@
  *
  * Pure module (no database) so the editor can import it in the browser.
  */
-export type ProgramKey = "FFL" | "PITRU_PAKSHA" | "OTHERS";
+export type ProgramKey = "FFL" | "PITRU_PAKSHA" | "KARTIK_DEEP_DAAN" | "OTHERS";
 
 export const PROGRAMS: { value: ProgramKey; label: string }[] = [
   { value: "FFL", label: "Food For Life" },
   { value: "PITRU_PAKSHA", label: "Pitru Paksha" },
+  { value: "KARTIK_DEEP_DAAN", label: "Kartik Deep Daan" },
   { value: "OTHERS", label: "Others" },
 ];
 
@@ -27,6 +28,12 @@ export const PROGRAM_YOUTUBE_DEFAULTS: Partial<Record<ProgramKey, ProgramYouTube
     youtubePlaylistId: "PLB8pRzb4sRCLYuYcVkzxLXrDUSjzhZKdF", // Food for Life - BCEC Pune
     categoryId: "29", // Nonprofits & Activism
     defaultLanguage: "en",
+    privacyStatus: "PUBLIC",
+    publishMode: "NOW",
+  },
+  KARTIK_DEEP_DAAN: {
+    categoryId: "29", // Nonprofits & Activism
+    defaultLanguage: "hi",
     privacyStatus: "PUBLIC",
     publishMode: "NOW",
   },

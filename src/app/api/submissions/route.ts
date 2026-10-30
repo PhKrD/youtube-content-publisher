@@ -99,7 +99,7 @@ export const GET = route(async (request) => {
 
 const createSchema = z.object({
   contentType: z.enum(["VIDEO", "SHORT", "IMAGE", "COMMUNITY_POST"]).default("VIDEO"),
-  program: z.enum(["FFL", "PITRU_PAKSHA", "OTHERS"]).optional(),
+  program: z.enum(["FFL", "PITRU_PAKSHA", "KARTIK_DEEP_DAAN", "OTHERS"]).optional(),
   topic: z.string().max(300).optional(),
   speaker: z.string().max(200).optional(),
 });

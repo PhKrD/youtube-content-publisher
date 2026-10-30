@@ -157,12 +157,12 @@ export function ContentEditor(props: EditorProps) {
    */
   const STRUCTURAL = useMemo(
     () =>
-      new Set(["PROGRAM_NAME", "TOPIC", "SPEAKER_NAME", "DATE", "DATE_HI", "DATE_SHORT", "LOCATION"]),
+      new Set(["PROGRAM_NAME", "TOPIC", "SPEAKER_NAME", "DATE", "DATE_HI", "DATE_HI_LONG", "DATE_SHORT", "LOCATION"]),
     [],
   );
   /** The template's date field, if any; its label and help text describe the date picker. */
   const dateVariable = props.variables.find((v) =>
-    ["DATE", "DATE_HI", "DATE_SHORT"].includes(v.key),
+    ["DATE", "DATE_HI", "DATE_HI_LONG", "DATE_SHORT"].includes(v.key),
   );
 
   const save = useCallback(

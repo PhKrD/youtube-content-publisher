@@ -158,6 +158,7 @@ enum TemplateInputType {
 enum Program {
   FFL
   PITRU_PAKSHA
+  KARTIK_DEEP_DAAN
   OTHERS
 }
 

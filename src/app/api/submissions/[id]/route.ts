@@ -68,7 +68,7 @@ export const GET = route(async (_request, { params }: Params) => {
 });
 
 const updateSchema = z.object({
-  program: z.enum(["FFL", "PITRU_PAKSHA", "OTHERS"]).nullish(),
+  program: z.enum(["FFL", "PITRU_PAKSHA", "KARTIK_DEEP_DAAN", "OTHERS"]).nullish(),
   language: z.enum(["HI", "EN"]).optional(),
   /** Hand-edited full description; null returns to the template. */
   descriptionOverride: z.string().max(YOUTUBE_LIMITS.descriptionMaxChars).nullish(),

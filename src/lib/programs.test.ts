@@ -5,6 +5,7 @@ describe("programDisplayName", () => {
   it("uses the fixed name for named programmes, ignoring stale typed text", () => {
     expect(programDisplayName("FFL", { PROGRAM_NAME: "old" })).toBe("Food For Life");
     expect(programDisplayName("PITRU_PAKSHA", {})).toBe("Pitru Paksha");
+    expect(programDisplayName("KARTIK_DEEP_DAAN", {})).toBe("Kartik Deep Daan");
   });
 
   it("uses the typed name for Others, never the code 'OTHERS'", () => {
@@ -16,7 +17,7 @@ describe("programDisplayName", () => {
 });
 
 describe("Devanagari date", () => {
-  it("formats a date-picker value as २६/०९/२०२६", () => {
+  it("formats a date-picker value as DD/MM/YYYY", () => {
     const f = new Intl.DateTimeFormat("hi-IN-u-nu-deva", {
       day: "2-digit",
       month: "2-digit",
@@ -24,5 +25,15 @@ describe("Devanagari date", () => {
       timeZone: "UTC",
     });
     expect(f.format(new Date("2026-09-26"))).toBe("२६/०९/२०२६");
+  });
+
+  it("formats a date-picker value in Hindi long format (१ नवंबर २०२६)", () => {
+    const f = new Intl.DateTimeFormat("hi-IN-u-nu-deva", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    expect(f.format(new Date("2026-11-01"))).toBe("१ नवंबर २०२६");
   });
 });

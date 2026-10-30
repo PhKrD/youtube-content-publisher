@@ -182,6 +182,15 @@ function mergedTemplateValues(submission: SubmissionWithRelations): Record<strin
           timeZone: "UTC",
         }).format(submission.recordedOn)
       : "",
+    // e.g. १ नवंबर २०२६. UTC because a date input is stored as UTC midnight.
+    DATE_HI_LONG: submission.recordedOn
+      ? new Intl.DateTimeFormat("hi-IN-u-nu-deva", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        }).format(submission.recordedOn)
+      : "",
     ...values,
     PROGRAM_NAME: programDisplayName(submission.program, values),
   };
